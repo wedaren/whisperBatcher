@@ -1,16 +1,4 @@
 lexicon:
-  fuck:
-    en: "damn"
-    zh: "该死"
-    ja: "くそ"
-  shit:
-    en: "crap"
-    zh: "糟糕"
-    ja: "しまった"
-  babe:
-    en: "dear"
-    zh: "亲爱的"
-    ja: "ねえ"
   boob:
     en: "chest"
     zh: "胸部"
@@ -80,13 +68,21 @@ lexicon:
     zh: "乳头"
     ja: "乳首"
   ちんこ:
-    en: "penis"
-    zh: "阴茎"
+    en: "pee-pee"
+    zh: "鸡鸡"
     ja: "ちんこ"
   ちんぽ:
-    en: "penis"
-    zh: "阴茎"
+    en: "pee-pee"
+    zh: "鸡鸡"
     ja: "ちんぽ"
+  チンポ:
+    en: "pee-pee"
+    zh: "鸡鸡"
+    ja: "チンポ"
+  ちんちん:
+    en: "pee-pee"
+    zh: "鸡鸡"
+    ja: "ちんちん"
   まんこ:
     en: "vagina"
     zh: "阴道"
