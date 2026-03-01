@@ -1,6 +1,6 @@
 /**
- * PipelineRunner: Orchestrates the 3-phase pipeline for a single video task.
- * Phases: transcribe → optimize → translate
+ * PipelineRunner：为单个视频任务协调三阶段流水线。
+ * 阶段：转录 → 优化 → 翻译
  */
 import * as fs from 'fs';
 import * as path from 'path';
@@ -57,18 +57,18 @@ export class PipelineRunner {
         const taskModel = task.config?.whisperModel ?? config.get<string>('whisperModel', 'tiny');
         const taskLanguage = task.config?.whisperLanguage ?? config.get<string>('whisperLanguage', 'auto');
 
-        // Ensure output directory exists (no separate meta directory)
+        // 确保输出目录存在（不使用单独的 meta 目录）
         if (!fs.existsSync(taskOutputDir)) { fs.mkdirSync(taskOutputDir, { recursive: true }); }
 
-        logFn('Pipeline started');
-        logFn(`Config: model=${taskModel}, lang=${taskLanguage}, targetLangs=[${targetLanguages.join(',')}], concurrency=${config.get<number>('maxConcurrency', 2)}`);
+        logFn('流水线已启动');
+        logFn(`配置：model=${taskModel}, lang=${taskLanguage}, 目标语言=[${targetLanguages.join(',')}], 并发=${config.get<number>('maxConcurrency', 2)}`);
 
-        // Load compliance rules
+        // 加载合规规则
         this.compliance.loadRules(complianceRulesPath);
         if (!this.compliance.isLoaded) {
-            logFn('WARNING: Compliance lexicon not loaded — running without compliance rules');
+            logFn('警告：合规词表未加载 — 将在无合规规则下运行');
         } else {
-            logFn(`Compliance lexicon loaded: ${this.compliance.ruleCount} rules`);
+            logFn(`合规词表已加载：共 ${this.compliance.ruleCount} 条规则`);
         }
 
         try {
@@ -77,18 +77,18 @@ export class PipelineRunner {
             const rawSrtPath = path.join(taskOutputDir, `${baseName}.${modelSafe}.raw.srt`);
             let finalRawSrtPath = rawSrtPath;
 
-            // Check legacy location as well (videoDir)
+            // 也检查旧位置 (videoDir)
             const legacyRaw = path.join(videoDir, `${baseName}.${modelSafe}.raw.srt`);
 
             if (fs.existsSync(rawSrtPath)) {
-                logFn(`Phase 1/3: Found existing raw subtitles in meta, skipping transcription → ${path.basename(rawSrtPath)}`);
+                logFn(`阶段 1/3：在输出目录中找到已存在的原始字幕，跳过转录 → ${path.basename(rawSrtPath)}`);
                 this.taskStore.updateTask(taskId, {
                     outputs: { ...task.outputs, raw: rawSrtPath, folder: taskOutputDir },
                 });
             } else if (fs.existsSync(legacyRaw)) {
-                // move legacy into meta
+                // 将旧文件移动到输出目录
                 fs.renameSync(legacyRaw, rawSrtPath);
-                logFn(`Phase 1/3: Moved legacy raw subtitle into outputs: ${path.basename(rawSrtPath)}`);
+                logFn(`阶段 1/3：将旧版原始字幕移动到输出目录 → ${path.basename(rawSrtPath)}`);
                 this.taskStore.updateTask(taskId, {
                     outputs: { ...task.outputs, raw: rawSrtPath, folder: taskOutputDir },
                 });
@@ -97,12 +97,12 @@ export class PipelineRunner {
                     status: 'transcribing',
                     currentPhase: 'transcribing',
                 });
-                logFn('Phase 1/3: Starting Whisper transcription...');
+                logFn('阶段 1/3：开始 Whisper 转录...');
                 finalRawSrtPath = await this.whisper.transcribe(task.videoPath, { signal, taskModel, taskLanguage, outputDir: taskOutputDir });
                 this.taskStore.updateTask(taskId, {
                     outputs: { ...task.outputs, raw: finalRawSrtPath, folder: taskOutputDir },
                 });
-                logFn(`Phase 1/3: Transcription complete → ${path.basename(finalRawSrtPath)}`);
+                logFn(`阶段 1/3：转录完成 → ${path.basename(finalRawSrtPath)}`);
             }
 
             // Phase 2: Optimize
@@ -112,13 +112,13 @@ export class PipelineRunner {
             const legacyLlm = path.join(videoDir, `${baseName}.llm.srt`);
 
             if (fs.existsSync(llmSrtPath)) {
-                logFn(`Phase 2/3: Found existing optimized subtitles, skipping LLM optimization → ${path.basename(llmSrtPath)}`);
+                logFn(`阶段 2/3：在输出目录中找到已存在的 LLM 优化字幕，跳過优化 → ${path.basename(llmSrtPath)}`);
                 this.taskStore.updateTask(taskId, {
                     outputs: { ...currentTask.outputs, llm: llmSrtPath, folder: taskOutputDir },
                 });
             } else if (fs.existsSync(legacyLlm)) {
                 fs.renameSync(legacyLlm, llmSrtPath);
-                logFn(`Phase 2/3: Moved legacy llm subtitle into outputs: ${path.basename(llmSrtPath)}`);
+                logFn(`阶段 2/3：将旧版 LLM 字幕移动到输出目录 → ${path.basename(llmSrtPath)}`);
                 this.taskStore.updateTask(taskId, {
                     outputs: { ...currentTask.outputs, llm: llmSrtPath, folder: taskOutputDir },
                 });
@@ -127,7 +127,7 @@ export class PipelineRunner {
                     status: 'optimizing',
                     currentPhase: 'optimizing',
                 });
-                logFn('Phase 2/3: Starting LLM optimization...');
+                logFn('阶段 2/3：开始 LLM 优化...');
                 const optimizeResult = await this.optimize.optimize(finalRawSrtPath, { signal, logFn });
                 finalLlmSrtPath = optimizeResult.llmSrtPath;
                 currentTask = this.taskStore.getTask(taskId)!;
@@ -136,7 +136,7 @@ export class PipelineRunner {
                     outputs: { ...currentTask.outputs, llm: finalLlmSrtPath, folder: taskOutputDir },
                     complianceHits: (currentTask.complianceHits || 0) + optimizeResult.complianceHits,
                 });
-                logFn(`Phase 2/3: Optimization complete → ${path.basename(finalLlmSrtPath)} (${optimizeResult.complianceHits} compliance hits)`);
+                logFn(`阶段 2/3：优化完成 → ${path.basename(finalLlmSrtPath)}（合规命中 ${optimizeResult.complianceHits} 次）`);
             }
 
             // Phase 3: Translate
@@ -144,9 +144,9 @@ export class PipelineRunner {
                 status: 'translating',
                 currentPhase: 'translating',
             });
-            logFn(`Phase 3/3: Starting translation to [${targetLanguages.join(', ')}]...`);
+            logFn(`阶段 3/3：开始翻译到 [${targetLanguages.join(', ')}]...`);
 
-            // Write final translated SRTs next to the original video (videoDir)
+            // 将最终翻译的 SRT 写到视频同级目录 (videoDir)
             const translateResult = await this.translate.translateAll(
                 finalLlmSrtPath,
                 targetLanguages,
@@ -158,18 +158,18 @@ export class PipelineRunner {
             const primaryLang = targetLanguages[0];
             const primaryFinal = translateResult.paths[primaryLang] ?? Object.values(translateResult.paths)[0] ?? '';
 
-            // Copy LLM-optimized SRT next to video as <basename>.srt
-            // (Replaces previous behavior which copied the translated SRT)
+            // 将 LLM 优化后的 SRT 复制到视频同级，作为 <basename>.srt
+            // （替换之前复制翻译结果的行为）
             let primaryCopyPath = '';
             try {
                 if (finalLlmSrtPath && fs.existsSync(finalLlmSrtPath)) {
                     primaryCopyPath = path.join(videoDir, `${baseName}.srt`);
                     // overwrite if exists
                     fs.copyFileSync(finalLlmSrtPath, primaryCopyPath);
-                    logFn(`Copied LLM SRT to video dir: ${path.basename(primaryCopyPath)}`);
+                    logFn(`已将 LLM 优化字幕复制到视频同级：${path.basename(primaryCopyPath)}`);
                 }
             } catch (e: any) {
-                logFn(`Warning: failed to copy LLM SRT to video dir: ${e.message || String(e)}`);
+                logFn(`警告：未能将 LLM 字幕复制到视频同级：${e.message || String(e)}`);
             }
 
             this.taskStore.updateTask(taskId, {
@@ -187,23 +187,23 @@ export class PipelineRunner {
             const translatedFiles = Object.entries(translateResult.paths)
                 .map(([lang, p]) => `${lang}→${path.basename(p)}`)
                 .join(', ');
-            logFn(`Phase 3/3: Translation complete → ${translatedFiles} (${translateResult.totalComplianceHits} compliance hits)`);
-            logFn('✅ All phases completed successfully.');
+            logFn(`阶段 3/3：翻译完成 → ${translatedFiles} （合规命中 ${translateResult.totalComplianceHits} 次）`);
+            logFn('✅ 所有阶段已成功完成。');
         } catch (err: any) {
             if (signal.aborted) {
                 this.taskStore.updateTask(taskId, {
                     status: 'paused',
                     lastError: 'Task was paused/aborted',
                 });
-                logFn('⏸ Task paused/aborted by user.');
+                logFn('⏸ 任务已被暂停/中止。');
             } else {
                 this.taskStore.updateTask(taskId, {
                     status: 'failed',
                     lastError: err.message || String(err),
                 });
-                logFn(`❌ FAILED: ${err.message || String(err)}`);
+                logFn(`❌ 失败: ${err.message || String(err)}`);
                 if (err.stack) {
-                    logFn(`Stack: ${err.stack}`);
+                    logFn(`堆栈: ${err.stack}`);
                 }
             }
             throw err;
