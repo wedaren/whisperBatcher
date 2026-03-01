@@ -91,7 +91,7 @@ export class OptimizeService {
             // 质量检查：块数量是否匹配
             if (resultTexts.length !== sanitizedTexts.length) {
                 if (this.isRefusal(rawResponse)) {
-                    log(`Optimize: chunk ${i + 1}/${chunks.length} refused by LLM due to safety policy. Falling back to original text.`);
+                    log(`优化：块 ${i + 1}/${chunks.length} 因安全策略被 LLM 拒绝，回退到原始文本。`);
                     resultTexts = [...sanitizedTexts];
                 } else {
                     throw new Error(
@@ -145,7 +145,7 @@ export class OptimizeService {
                 optimizedTexts[g] = restoredTexts[localIdx];
             }
 
-            log(`Optimize: chunk ${i + 1}/${chunks.length} done (${totalHits} compliance hits)`);
+            log(`优化：块 ${i + 1}/${chunks.length} 完成（合规命中 ${totalHits} 次）`);
         }
 
         // 将优化后的文本合并回条目（若缺失则回退到原始文本）
