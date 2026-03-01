@@ -184,7 +184,7 @@ export class OptimizeService {
 
     private writeOptimizeDebug(outDir: string, prefix: string, data: any) {
         try {
-            const debugDir = path.join(outDir, 'llm-debug');
+            const debugDir = path.join(outDir, '.subtitle', 'llm-debug');
             if (!fs.existsSync(debugDir)) { fs.mkdirSync(debugDir, { recursive: true }); }
             const ts = new Date().toISOString().replace(/[:.]/g, '-');
             const base = path.join(debugDir, `${prefix}_${ts}`);

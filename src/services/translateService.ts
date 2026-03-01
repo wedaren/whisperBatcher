@@ -76,7 +76,8 @@ export class TranslateService {
 
         const langName = LANG_NAMES[targetLang] || targetLang;
         const chunks = chunkSrtEntries(entries, options?.chunkSize ?? 20, options?.overlap ?? 0);
-        const translatedEntries: SrtEntry[] = [];
+        // translatedTexts 保存全局每一条的翻译结果（仅填充 core 区域），最后与原条目合并
+        const translatedTexts: Array<string | undefined> = new Array(entries.length).fill(undefined);
         let totalHits = 0;
         const sourceTexts = extractTexts(entries);
         const skipSimilarityCheck = this.shouldSkipSimilarityCheck(targetLang, sourceTexts);
@@ -260,13 +261,23 @@ export class TranslateService {
                 }
             }
 
-            const merged = mergeTexts(chunkEntries, restoredTexts);
-            translatedEntries.push(...merged);
+            // 仅写回该 chunk 的 core 区域，避免重叠区被后续 chunk 覆盖
+            const { chunkStart, coreStart, coreEnd } = chunkObj;
+            for (let g = coreStart; g <= coreEnd; g++) {
+                const localIdx = g - chunkStart;
+                translatedTexts[g] = restoredTexts[localIdx];
+            }
 
             log(`Translate [${targetLang}]: 块 ${i + 1}/${chunks.length} 完成`);
         }
 
-        return this.finalizeTranslateOutput(llmSrtPath, targetLang, translatedEntries, totalHits, options);
+        // 将翻译结果合并回条目（若缺失则回退到原始文本）
+        const finalEntries: SrtEntry[] = entries.map((e, idx) => ({
+            ...e,
+            text: translatedTexts[idx] ?? e.text,
+        }));
+
+        return this.finalizeTranslateOutput(llmSrtPath, targetLang, finalEntries, totalHits, options);
     }
 
     /**
