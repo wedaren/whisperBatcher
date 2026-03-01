@@ -107,12 +107,14 @@ export class TranslateService {
             // Compliance sanitize
             const sanitizedTexts: string[] = [];
             const restoreMaps: Array<{ idx: number; map: any[] }> = [];
+            let chunkHits = 0; // 本块的合规命中计数
 
             for (let j = 0; j < texts.length; j++) {
                 const { sanitized, restoreMap, hits } = this.compliance.sanitize(texts[j]);
                 sanitizedTexts.push(sanitized);
                 restoreMaps.push({ idx: j, map: restoreMap });
                 totalHits += hits;
+                chunkHits += hits;
             }
 
             // Build translation prompt
@@ -146,8 +148,7 @@ export class TranslateService {
             // Parse response
             let resultTexts = this.parseNumberedResponse(rawResponse, sanitizedTexts.length);
             log(
-                `Translate [${targetLang}]: 块 ${i + 1}/${chunks.length} 响应长度=${rawResponse.length} 字符，` +
-                `解析=${resultTexts.length}/${sanitizedTexts.length}，预览="${this.previewText(rawResponse, 220)}"`
+                `Translate [${targetLang}]: 块 ${i + 1}/${chunks.length} 响应长度=${rawResponse.length} 字符，解析=${resultTexts.length}/${sanitizedTexts.length}`
             );
 
             // Quality check: block count
@@ -236,6 +237,7 @@ export class TranslateService {
                 const postSanitize = this.compliance.sanitize(restored);
                 if (postSanitize.hits > 0) {
                     totalHits += postSanitize.hits;
+                    chunkHits += postSanitize.hits;
                     restored = this.compliance.restore(postSanitize.sanitized, postSanitize.restoreMap);
                 }
 
@@ -268,7 +270,7 @@ export class TranslateService {
                 translatedTexts[g] = restoredTexts[localIdx];
             }
 
-            log(`Translate [${targetLang}]: 块 ${i + 1}/${chunks.length} 完成`);
+            log(`Translate [${targetLang}]: 块 ${i + 1}/${chunks.length} 完成（合规命中 ${chunkHits} 次）`);
         }
 
         // 将翻译结果合并回条目（若缺失则回退到原始文本）
