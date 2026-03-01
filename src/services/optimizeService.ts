@@ -1,5 +1,5 @@
 /**
- * OptimizeService: LLM-based readability optimization of raw SRT.
+ * OptimizeService：基于 LLM 的原始 SRT 可读性优化服务。
  */
 import * as fs from 'fs';
 import * as path from 'path';
@@ -21,8 +21,8 @@ export class OptimizeService {
     ) { }
 
     /**
-     * Read raw SRT, optimize text via LLM, write *.llm.srt.
-     * Returns path to the optimized SRT.
+     * 读取原始 SRT，通过 LLM 优化文本并写出 *.llm.srt。
+     * 返回优化后 SRT 的路径。
      */
     async optimize(
         rawSrtPath: string,
@@ -47,7 +47,7 @@ export class OptimizeService {
             const chunkEntries = chunkObj.entries;
             const texts = extractTexts(chunkEntries);
 
-            // Compliance sanitize
+            // 合规化替换（sanitize）
             const sanitizedTexts: string[] = [];
             const restoreMaps: Array<{ idx: number; map: any[] }> = [];
 
@@ -58,7 +58,7 @@ export class OptimizeService {
                 totalHits += hits;
             }
 
-            // Build LLM prompt
+            // 构建发送给 LLM 的提示（prompt）
             const numberedLines = sanitizedTexts.map((t, idx) => `[${idx + 1}] ${t}`).join('\n');
             let rawResponse = '';
             try {
@@ -85,13 +85,10 @@ export class OptimizeService {
                 throw err;
             }
 
-            // Parse response
-            
-            
-            
+            // 解析 LLM 响应
             let resultTexts = this.parseNumberedResponse(rawResponse, sanitizedTexts.length);
 
-            // Quality check: block count
+            // 质量检查：块数量是否匹配
             if (resultTexts.length !== sanitizedTexts.length) {
                 if (this.isRefusal(rawResponse)) {
                     log(`Optimize: chunk ${i + 1}/${chunks.length} refused by LLM due to safety policy. Falling back to original text.`);
@@ -104,7 +101,7 @@ export class OptimizeService {
                 }
             }
 
-            // Compliance restore + leakage check
+            // 恢复占位符并检查合规性泄露
             const restoredTexts = resultTexts.map((text, idx) => {
                 const mapEntry = restoreMaps.find((m) => m.idx === idx);
                 let restored = text;
@@ -125,7 +122,7 @@ export class OptimizeService {
                 return restored;
             });
 
-            // Prompt leak detection
+            // 提示词（prompt）泄露检测
             for (const t of restoredTexts) {
                 if (this.containsPromptLeak(t)) {
                     this.writeOptimizeDebug(path.dirname(rawSrtPath), `optimize_chunk${i + 1}_promptleak`, {
@@ -141,7 +138,7 @@ export class OptimizeService {
                 }
             }
 
-            // Write back only the core region (avoid overwriting overlap results).
+            // 仅写回核心区域（避免覆盖重叠区的结果）
             const { chunkStart, coreStart, coreEnd } = chunkObj;
             for (let g = coreStart; g <= coreEnd; g++) {
                 const localIdx = g - chunkStart;
@@ -151,13 +148,13 @@ export class OptimizeService {
             log(`Optimize: chunk ${i + 1}/${chunks.length} done (${totalHits} compliance hits)`);
         }
 
-        // Merge optimized texts back into entries (fallback to original text when missing)
+        // 将优化后的文本合并回条目（若缺失则回退到原始文本）
         const optimizedEntries: SrtEntry[] = entries.map((e, idx) => ({
             ...e,
             text: optimizedTexts[idx] ?? e.text,
         }));
 
-        // Write output
+        // 写出最终 SRT
         const dir = path.dirname(rawSrtPath);
         const baseName = path.basename(rawSrtPath).replace(/\.raw\.srt$/i, '');
         const llmSrtPath = path.join(dir, `${baseName}.llm.srt`);
@@ -181,7 +178,7 @@ export class OptimizeService {
             }
         } catch (e) {
             // eslint-disable-next-line no-console
-            console.error('Failed to write llm debug dump', e);
+            console.error('写入 llm 调试转储失败', e);
         }
     }
 
@@ -196,7 +193,7 @@ export class OptimizeService {
             }
         }
 
-        // Fallback: if numbered parsing didn't work, use raw lines
+        // 回退：如果编号解析失败且行数与预期相同，则直接使用原始行
         if (result.length === 0 && lines.length === expectedCount) {
             return lines.map((l) => l.trim());
         }
