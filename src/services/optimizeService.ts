@@ -23,6 +23,25 @@ export class OptimizeService {
     /**
      * 读取原始 SRT，通过 LLM 优化文本并写出 *.llm.srt。
      * 返回优化后 SRT 的路径。
+     *
+     * 执行逻辑与原理（供维护者参考）
+     * 1. 解析：读取 raw SRT 并用 `parseSrt` 转为条目数组，每个条目包含时间戳与文本。
+     * 2. 分块：将条目按配置或默认的 `chunkSize`/`overlap` 分成多个块（chunk），
+     *    每个块包含一个 core 区域和前后重叠区，用于保持上下文一致性并避免边界断裂。
+     * 3. 合规化（sanitize）：对每行文本做合规替换（占位符替换敏感词），记录 restoreMap 与命中数（hits）。
+     * 4. LLM 优化：将每个块的 sanitized 文本按行编号（[1] ...）拼成 prompt 发给 LLM，期望返回同样数量的行。
+     *    - Prompt 要求仅输出编号行，不要额外注释；这有助于解析结果并保持行对齐。
+     * 5. 解析与回退：解析 LLM 响应为行数组；若解析/匹配失败或被拒绝，则回退到 sanitized 文本（避免中断流水线），
+     *    并将原始 prompt/response 写入 `llm-debug` 以便排查。
+     * 6. 恢复占位符：将占位符恢复回原始敏感词，随后再做一次合规检查以保证最终输出合规。
+     * 7. 泄露检测：检测是否有 prompt 内容被回显，若发生则写 debug 并中断（或按策略回退）。
+     * 8. 写回：仅把块的核心区域（core）写回到最终的文本数组，最后用 `formatSrt` 写出 `*.llm.srt`。
+     *
+     * 维护与调优要点：
+     * - 若遇到解析失败频繁，优先增强 `parseNumberedResponse`（支持更多编号格式）并启用更宽容的回退。
+     * - 根据所用 LLM 的 token 限制调整 `chunkSize`，避免上下文截断。
+     * - 若需更精确时间对齐，优化后可接入 forced-alignment（如 whisperx/gentle）微调时间戳。
+     * - 所有异常/LLM 响应将写入 `llm-debug` 目录，便于离线分析与改进 prompt。
      */
     async optimize(
         rawSrtPath: string,
