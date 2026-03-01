@@ -1,156 +1,135 @@
-"""# 默认词典（lexicon）
+# 默认词典（lexicon）
 # 说明：
-# - 键为可能出现的词（包含俚语、英/日/中等变体），值为统一翻译。
-# - 维护建议：按组新增词条、在组内按可读性或假名/字母顺序整理。
-"""
+# - 原来的每个词条包含 `en`/`zh`/`ja` 三个字段。
+# - 本次重组把词典分为三个并列子映射：`en` / `ja` / `zh`，便于按语言提取和管理。
+# - 维护时请在三个子映射中同时添加新词以保持一致性。
 lexicon:
-  # --- 阴茎 / 男性生殖器 ---
-  dick:
-    en: "penis"
-    zh: "阴茎"
-    ja: "ペニス"
-  チンポ:
-    en: "pee-pee"
-    zh: "鸡鸡"
-    ja: "チンポ"
-  ちんこ:
-    en: "pee-pee"
-    zh: "鸡鸡"
-    ja: "ちんこ"
-  ちんぽ:
-    en: "pee-pee"
-    zh: "鸡鸡"
-    ja: "ちんぽ"
-  ちんちん:
-    en: "pee-pee"
-    zh: "鸡鸡"
-    ja: "ちんちん"
-  ペニス:
-    en: "penis"
-    zh: "阴茎"
-    ja: "ペニス"
-  陰茎:
-    en: "penis"
-    zh: "阴茎"
-    ja: "陰茎"
-  cock:
-    en: "penis"
-    zh: "阴茎"
-    ja: "ペニス"
+  # --- 英文映射（原始键 -> 英文标准词） ---
+  en:
+    dick: "penis"
+    チンポ: "pee-pee"
+    ちんこ: "pee-pee"
+    ちんぽ: "pee-pee"
+    ちんちん: "pee-pee"
+    ペニス: "penis"
+    陰茎: "penis"
+    cock: "penis"
 
-  # --- 阴道 / 女性生殖器 ---
-  pussy:
-    en: "vagina"
-    zh: "阴道"
-    ja: "膣"
-  まんこ:
-    en: "vagina"
-    zh: "阴道"
-    ja: "まんこ"
+    pussy: "vagina"
+    まんこ: "vagina"
 
-  # --- 乳房 / 胸部 ---
-  boob:
-    en: "chest"
-    zh: "胸部"
-    ja: "胸"
-  boobs:
-    en: "chest"
-    zh: "胸部"
-    ja: "胸"
-  breast:
-    en: "chest"
-    zh: "胸部"
-    ja: "胸"
-  breasts:
-    en: "chest"
-    zh: "胸部"
-    ja: "胸"
-  おっぱい:
-    en: "breasts"
-    zh: "胸部"
-    ja: "おっぱい"
-  パイ:
-    en: "boob"
-    zh: "胸"
-    ja: "パイ"
+    boob: "chest"
+    boobs: "chest"
+    breast: "chest"
+    breasts: "chest"
+    おっぱい: "breasts"
+    パイ: "boob"
 
-  # --- 乳头 ---
-  nipple:
-    en: "nipple"
-    zh: "乳头"
-    ja: "乳首"
-  nipples:
-    en: "nipples"
-    zh: "乳头"
-    ja: "乳首"
-  乳首:
-    en: "nipple"
-    zh: "乳头"
-    ja: "乳首"
+    nipple: "nipple"
+    nipples: "nipples"
+    乳首: "nipple"
 
-  # --- 臀部 / 肛门 ---
-  ass:
-    en: "butt"
-    zh: "臀部"
-    ja: "お尻"
-  anus:
-    en: "anus"
-    zh: "肛门"
-    ja: "肛門"
+    ass: "butt"
+    anus: "anus"
 
-  # --- 分泌物 / 精液 / 射精相关 ---
-  cum:
-    en: "semen"
-    zh: "精液"
-    ja: "精液"
-  semen:
-    en: "semen"
-    zh: "精液"
-    ja: "精液"
-  射精:
-    en: "ejaculation"
-    zh: "射精"
-    ja: "射精"
-  発射:
-    en: "release"
-    zh: "释放"
-    ja: "発射"
-  中出し:
-    en: "internal ejaculation"
-    zh: "内射"
-    ja: "中出し"
-  イク:
-    en: "cum"
-    zh: "高潮"
-    ja: "イク"
-  イッちゃう:
-    en: "cum"
-    zh: "高潮"
-    ja: "イッちゃう"
+    cum: "semen"
+    semen: "semen"
+    射精: "ejaculation"
+    発射: "release"
+    中出し: "internal ejaculation"
+    イク: "cum"
+    イッちゃう: "cum"
 
-  # --- 性行为 / 手淫 / 技巧 ---
-  しこしこ:
-    en: "masturbate"
-    zh: "手淫"
-    ja: "マスターベーション"
-  マスターベーション:
-    en: "masturbate"
-    zh: "手淫"
-    ja: "しこしこ"
-  パイズリ:
-    en: "paizuri"
-    zh: "乳交"
-    ja: "パイズリ"
-  クリトリス:
-    en: "clitoris"
-    zh: "阴蒂"
-    ja: "クリトリス"
-  clit:
-    en: "clitoris"
-    zh: "阴蒂"
-    ja: "陰核"
-  clitoris:
-    en: "clitoris"
-    zh: "阴蒂"
-    ja: "陰核"
+    しこしこ: "masturbate"
+    マスターベーション: "masturbate"
+    パイズリ: "paizuri"
+    クリトリス: "clitoris"
+    clit: "clitoris"
+    clitoris: "clitoris"
+
+  # --- 日文映射（原始键 -> 日文标准词） ---
+  ja:
+    dick: "ペニス"
+    チンポ: "チンポ"
+    ちんこ: "ちんこ"
+    ちんぽ: "ちんぽ"
+    ちんちん: "ちんちん"
+    ペニス: "ペニス"
+    陰茎: "陰茎"
+    cock: "ペニス"
+
+    pussy: "膣"
+    まんこ: "まんこ"
+
+    boob: "胸"
+    boobs: "胸"
+    breast: "胸"
+    breasts: "胸"
+    おっぱい: "おっぱい"
+    パイ: "パイ"
+
+    nipple: "乳首"
+    nipples: "乳首"
+    乳首: "乳首"
+
+    ass: "お尻"
+    anus: "肛門"
+
+    cum: "精液"
+    semen: "精液"
+    射精: "射精"
+    発射: "発射"
+    中出し: "中出し"
+    イク: "イク"
+    イッちゃう: "イッちゃう"
+
+    しこしこ: "マスターベーション"
+    マスターベーション: "しこしこ"
+    パイズリ: "パイズリ"
+    クリトリス: "クリトリス"
+    clit: "陰核"
+    clitoris: "陰核"
+
+  # --- 中文映射（原始键 -> 中文标准词） ---
+  zh:
+    dick: "阴茎"
+    チンポ: "鸡鸡"
+    ちんこ: "鸡鸡"
+    ちんぽ: "鸡鸡"
+    ちんちん: "鸡鸡"
+    ペニス: "阴茎"
+    陰茎: "阴茎"
+    cock: "阴茎"
+
+    pussy: "阴道"
+    まんこ: "阴道"
+
+    boob: "胸部"
+    boobs: "胸部"
+    breast: "胸部"
+    breasts: "胸部"
+    おっぱい: "胸部"
+    パイ: "胸"
+
+    nipple: "乳头"
+    nipples: "乳头"
+    乳首: "乳头"
+
+    ass: "臀部"
+    anus: "肛门"
+
+    cum: "精液"
+    semen: "精液"
+    射精: "射精"
+    発射: "释放"
+    中出し: "内射"
+    イク: "高潮"
+    イッちゃう: "高潮"
+
+    しこしこ: "手淫"
+    マスターベーション: "手淫"
+    パイズリ: "乳交"
+    クリトリス: "阴蒂"
+    clit: "阴蒂"
+    clitoris: "阴蒂"
 
