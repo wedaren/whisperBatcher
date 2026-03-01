@@ -146,7 +146,7 @@ export class TranslateService {
                     log(`Translate [${targetLang}]: chunk ${i + 1}/${chunks.length} refused by LLM due to safety policy. Falling back to original text.`);
                     resultTexts = [...sanitizedTexts];
                 } else {
-                    // dump debug info before throwing so user can inspect
+                    // dump debug info and fall back to sanitized texts instead of throwing
                     this.writeChunkDebug(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_chunk${i + 1}_mismatch`, {
                         chunkIndex: i + 1,
                         chunkEntries: chunkEntries.map((e) => ({ index: e.index, startTime: e.startTime, endTime: e.endTime, text: e.text })),
@@ -157,10 +157,8 @@ export class TranslateService {
                         expectedCount: sanitizedTexts.length,
                     });
 
-                    throw new Error(
-                        `Translate chunk ${i + 1} (${targetLang}): block count mismatch ` +
-                        `(expected ${sanitizedTexts.length}, got ${resultTexts.length})`
-                    );
+                    log(`Translate [${targetLang}]: chunk ${i + 1}/${chunks.length} parse mismatch; falling back to sanitized original to avoid interrupting pipeline.`);
+                    resultTexts = [...sanitizedTexts];
                 }
             }
 
@@ -170,10 +168,19 @@ export class TranslateService {
                     (t, idx) => this.isSimilar(t, sanitizedTexts[idx])
                 ).length;
                 if (similarCount > sanitizedTexts.length * 0.8) {
-                    throw new Error(
-                        `Translate chunk ${i + 1} (${targetLang}): ` +
-                        `output is suspiciously similar to input — likely untranslated`
-                    );
+                    // write debug and fallback rather than throwing
+                    this.writeChunkDebug(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_chunk${i + 1}_similar`, {
+                        chunkIndex: i + 1,
+                        chunkEntries: chunkEntries.map((e) => ({ index: e.index, startTime: e.startTime, endTime: e.endTime, text: e.text })),
+                        sanitizedTexts: sanitizedTexts,
+                        numberedPrompt: sanitizedTexts.map((t, idx) => `[${idx + 1}] ${t}`).join('\n'),
+                        rawResponse,
+                        similarCount,
+                        total: sanitizedTexts.length,
+                    });
+
+                    log(`Translate [${targetLang}]: chunk ${i + 1}/${chunks.length} output suspiciously similar; falling back to sanitized original.`);
+                    resultTexts = [...sanitizedTexts];
                 }
             }
 
@@ -182,10 +189,26 @@ export class TranslateService {
                 const mapEntry = restoreMaps.find((m) => m.idx === idx);
                 let restored = text;
                 if (mapEntry && mapEntry.map.length > 0) {
-                    restored = this.compliance.restore(text, mapEntry.map);
+                    try {
+                        restored = this.compliance.restore(text, mapEntry.map);
+                    } catch (e) {
+                        // fallback to sanitized original on restore failure
+                        this.writeChunkDebug(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_chunk${i + 1}_restorefail`, {
+                            chunkIndex: i + 1,
+                            idx,
+                            error: String(e),
+                        });
+                        restored = sanitizedTexts[idx];
+                    }
                 }
                 if (this.compliance.detectLeakage(restored)) {
-                    throw new Error(`Compliance placeholder leaked in translate chunk ${i + 1}, line ${idx + 1}`);
+                    // log and fallback rather than throwing
+                    this.writeChunkDebug(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_chunk${i + 1}_leak`, {
+                        chunkIndex: i + 1,
+                        idx,
+                        restored,
+                    });
+                    restored = sanitizedTexts[idx];
                 }
 
                 // Post-translation compliance check (for target language rules)
@@ -198,20 +221,22 @@ export class TranslateService {
                 return restored;
             });
 
-            // Prompt leak detection
-            for (const t of restoredTexts) {
+            // Prompt leak detection: replace leaked lines with sanitized fallback rather than throwing
+            for (let k = 0; k < restoredTexts.length; k++) {
+                const t = restoredTexts[k];
                 if (this.containsPromptLeak(t)) {
-                    // dump debug info
                     this.writeChunkDebug(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_chunk${i + 1}_promptleak`, {
                         chunkIndex: i + 1,
+                        idx: k,
                         chunkEntries: chunkEntries.map((e) => ({ index: e.index, startTime: e.startTime, endTime: e.endTime, text: e.text })),
                         sanitizedTexts: sanitizedTexts,
-                        numberedPrompt: sanitizedTexts.map((t, idx) => `[${idx + 1}] ${t}`).join('\n'),
+                        numberedPrompt: sanitizedTexts.map((t2, idx) => `[${idx + 1}] ${t2}`).join('\n'),
                         rawResponse,
                         leakedLine: t,
                     });
 
-                    throw new Error(`LLM prompt leaked in translate output at chunk ${i + 1}`);
+                    log(`Translate [${targetLang}]: chunk ${i + 1} detected prompt leak on line ${k + 1}; using sanitized fallback.`);
+                    restoredTexts[k] = sanitizedTexts[k];
                 }
             }
 
