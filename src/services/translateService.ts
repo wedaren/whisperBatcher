@@ -286,7 +286,7 @@ export class TranslateService {
     async translateAll(
         llmSrtPath: string,
         targetLanguages: string[],
-        options?: { signal?: AbortSignal; logFn?: (msg: string) => void; outputDir?: string }
+        options?: { signal?: AbortSignal; logFn?: (msg: string) => void; outputDir?: string; chunkSize?: number; overlap?: number }
     ): Promise<{ paths: Record<string, string>; totalComplianceHits: number }> {
         const paths: Record<string, string> = {};
         let totalHits = 0;

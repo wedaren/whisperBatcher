@@ -147,10 +147,12 @@ export class PipelineRunner {
             logFn(`阶段 3/3：开始翻译到 [${targetLanguages.join(', ')}]...`);
 
             // 将最终翻译的 SRT 写到视频同级目录 (videoDir)
+            // 为确保翻译阶段使用与优化阶段一致的分块参数，显式传入与 OptimizeService 默认相同的
+            // chunkSize/overlap（50/5）。如果未来需要使其可配置，可从 extension config 或 task config 中读取。
             const translateResult = await this.translate.translateAll(
                 finalLlmSrtPath,
                 targetLanguages,
-                { signal, logFn, outputDir: videoDir }
+                { signal, logFn, outputDir: videoDir, chunkSize: 50, overlap: 5 }
             );
 
             const updatedTask = this.taskStore.getTask(taskId)!;
