@@ -26,7 +26,7 @@ export class OptimizeService {
      */
     async optimize(
         rawSrtPath: string,
-        options?: { signal?: AbortSignal; logFn?: (msg: string) => void }
+        options?: { signal?: AbortSignal; logFn?: (msg: string) => void; chunkSize?: number; overlap?: number }
     ): Promise<{ llmSrtPath: string; complianceHits: number }> {
         const log = options?.logFn ?? (() => { });
         const rawText = fs.readFileSync(rawSrtPath, 'utf-8');
@@ -36,15 +36,16 @@ export class OptimizeService {
             throw new Error('Raw SRT is empty or unparseable');
         }
 
-        const chunks = chunkSrtEntries(entries, 20);
-        const optimizedEntries: SrtEntry[] = [];
+        const chunks = chunkSrtEntries(entries, options?.chunkSize ?? 50, options?.overlap ?? 5);
+        const optimizedTexts: Array<string | undefined> = new Array(entries.length).fill(undefined);
         let totalHits = 0;
 
         for (let i = 0; i < chunks.length; i++) {
             if (options?.signal?.aborted) { throw new Error('Aborted'); }
 
-            const chunk = chunks[i];
-            const texts = extractTexts(chunk);
+            const chunkObj = chunks[i];
+            const chunkEntries = chunkObj.entries;
+            const texts = extractTexts(chunkEntries);
 
             // Compliance sanitize
             const sanitizedTexts: string[] = [];
@@ -116,11 +117,21 @@ export class OptimizeService {
                 }
             }
 
-            const merged = mergeTexts(chunk, restoredTexts);
-            optimizedEntries.push(...merged);
+            // Write back only the core region (avoid overwriting overlap results).
+            const { chunkStart, coreStart, coreEnd } = chunkObj;
+            for (let g = coreStart; g <= coreEnd; g++) {
+                const localIdx = g - chunkStart;
+                optimizedTexts[g] = restoredTexts[localIdx];
+            }
 
             log(`Optimize: chunk ${i + 1}/${chunks.length} done (${totalHits} compliance hits)`);
         }
+
+        // Merge optimized texts back into entries (fallback to original text when missing)
+        const optimizedEntries: SrtEntry[] = entries.map((e, idx) => ({
+            ...e,
+            text: optimizedTexts[idx] ?? e.text,
+        }));
 
         // Write output
         const dir = path.dirname(rawSrtPath);

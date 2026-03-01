@@ -43,7 +43,7 @@ export class TranslateService {
     async translateToLanguage(
         llmSrtPath: string,
         targetLang: string,
-        options?: { signal?: AbortSignal; logFn?: (msg: string) => void; outputDir?: string }
+        options?: { signal?: AbortSignal; logFn?: (msg: string) => void; outputDir?: string; chunkSize?: number; overlap?: number }
     ): Promise<{ translatedPath: string; complianceHits: number }> {
         const log = options?.logFn ?? (() => { });
         const srtText = fs.readFileSync(llmSrtPath, 'utf-8');
@@ -54,7 +54,7 @@ export class TranslateService {
         }
 
         const langName = LANG_NAMES[targetLang] || targetLang;
-        const chunks = chunkSrtEntries(entries, 20);
+        const chunks = chunkSrtEntries(entries, options?.chunkSize ?? 20, options?.overlap ?? 0);
         const translatedEntries: SrtEntry[] = [];
         let totalHits = 0;
         const sourceTexts = extractTexts(entries);
@@ -78,8 +78,9 @@ export class TranslateService {
         for (let i = 0; i < chunks.length; i++) {
             if (options?.signal?.aborted) { throw new Error('Aborted'); }
 
-            const chunk = chunks[i];
-            const texts = extractTexts(chunk);
+            const chunkObj = chunks[i];
+            const chunkEntries = chunkObj.entries;
+            const texts = extractTexts(chunkEntries);
 
             // Compliance sanitize
             const sanitizedTexts: string[] = [];
@@ -180,7 +181,7 @@ export class TranslateService {
                 }
             }
 
-            const merged = mergeTexts(chunk, restoredTexts);
+            const merged = mergeTexts(chunkEntries, restoredTexts);
             translatedEntries.push(...merged);
 
             log(`Translate [${targetLang}]: chunk ${i + 1}/${chunks.length} done`);

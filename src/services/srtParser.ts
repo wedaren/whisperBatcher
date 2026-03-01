@@ -48,11 +48,37 @@ export function formatSrt(entries: SrtEntry[]): string {
  * Chunk SRT entries into groups for batch LLM processing.
  * Returns array of SrtEntry arrays, each with at most `chunkSize` entries.
  */
-export function chunkSrtEntries(entries: SrtEntry[], chunkSize: number = 20): SrtEntry[][] {
-    const chunks: SrtEntry[][] = [];
-    for (let i = 0; i < entries.length; i += chunkSize) {
-        chunks.push(entries.slice(i, i + chunkSize));
+export function chunkSrtEntries(
+    entries: SrtEntry[],
+    chunkSize: number = 50,
+    overlap: number = 0
+): Array<{
+    entries: SrtEntry[];
+    chunkStart: number;
+    coreStart: number;
+    coreEnd: number;
+}> {
+    const n = entries.length;
+    const chunks: Array<{
+        entries: SrtEntry[];
+        chunkStart: number;
+        coreStart: number;
+        coreEnd: number;
+    }> = [];
+
+    for (let coreStart = 0; coreStart < n; coreStart += chunkSize) {
+        const coreEnd = Math.min(coreStart + chunkSize - 1, n - 1);
+        const chunkStart = Math.max(0, coreStart - overlap);
+        const chunkEnd = Math.min(n - 1, coreEnd + overlap);
+
+        chunks.push({
+            entries: entries.slice(chunkStart, chunkEnd + 1),
+            chunkStart,
+            coreStart,
+            coreEnd,
+        });
     }
+
     return chunks;
 }
 
