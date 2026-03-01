@@ -4,6 +4,7 @@
 # - 文件通过注释分区：英文区（ASCII / 英文词）与日文区（假名/日文单词）。
 lexicon:
   # ------------------- 英文区（English-origin / ASCII 词） -------------------
+  # --- 乳房 / 胸部 ---
   boob:
     en: "chest"
     zh: "胸部"
@@ -21,6 +22,7 @@ lexicon:
     zh: "胸部"
     ja: "胸"
 
+  # --- 乳头 ---
   nipple:
     en: "nipple"
     zh: "乳头"
@@ -30,6 +32,7 @@ lexicon:
     zh: "乳头"
     ja: "乳首"
 
+  # --- 男性生殖器 ---
   dick:
     en: "penis"
     zh: "阴茎"
@@ -39,11 +42,13 @@ lexicon:
     zh: "阴茎"
     ja: "ペニス"
 
+  # --- 女性生殖器 ---
   pussy:
     en: "vagina"
     zh: "阴道"
     ja: "膣"
 
+  # --- 阴蒂 / 相关 ---
   clit:
     en: "clitoris"
     zh: "阴蒂"
@@ -53,6 +58,7 @@ lexicon:
     zh: "阴蒂"
     ja: "陰核"
 
+  # --- 臀部 / 肛门 ---
   ass:
     en: "butt"
     zh: "臀部"
@@ -62,6 +68,7 @@ lexicon:
     zh: "肛门"
     ja: "肛門"
 
+  # --- 分泌物 / 精液 ---
   cum:
     en: "semen"
     zh: "精液"
@@ -72,15 +79,23 @@ lexicon:
     ja: "精液"
 
   # ------------------- 日文区（Japanese-origin / 假名・日文词） -------------------
+  # --- 乳房 / 胸部 ---
   おっぱい:
     en: "breasts"
     zh: "胸部"
     ja: "おっぱい"
+  パイ:
+    en: "boob"
+    zh: "胸"
+    ja: "パイ"
+
+  # --- 乳头 ---
   乳首:
     en: "nipple"
     zh: "乳头"
     ja: "乳首"
 
+  # --- 男性生殖器 ---
   ちんこ:
     en: "pee-pee"
     zh: "鸡鸡"
@@ -98,11 +113,13 @@ lexicon:
     zh: "鸡鸡"
     ja: "ちんちん"
 
+  # --- 女性生殖器 ---
   まんこ:
     en: "vagina"
     zh: "阴道"
     ja: "まんこ"
 
+  # --- 阴茎 ---
   ペニス:
     en: "penis"
     zh: "阴茎"
@@ -112,6 +129,7 @@ lexicon:
     zh: "阴茎"
     ja: "陰茎"
 
+  # --- 射精 / 分泌 ---
   射精:
     en: "ejaculation"
     zh: "射精"
@@ -125,6 +143,7 @@ lexicon:
     zh: "内射"
     ja: "中出し"
 
+  # --- 性行为 / 手淫 / 技巧 ---
   しこしこ:
     en: "masturbate"
     zh: "手淫"
@@ -149,9 +168,5 @@ lexicon:
     en: "clitoris"
     zh: "阴蒂"
     ja: "クリトリス"
-  パイ:
-    en: "boob"
-    zh: "胸"
-    ja: "パイ"
 
 
