@@ -1,0 +1,223 @@
+{
+  "name": "whisper-subtitle-flow",
+  "displayName": "Whisper Subtitle Flow",
+  "description": "Batch subtitle generation & translation with Whisper + LLM",
+  "version": "0.0.1",
+  "publisher": "wedaren",
+  "engines": {
+    "vscode": "^1.109.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "subtitleFlow",
+          "title": "Subtitle Flow",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "subtitleFlow": [
+        {
+          "id": "subtitleFlowTasks",
+          "name": "Tasks",
+          "type": "tree",
+          "icon": "$(list-unordered)"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "subtitleFlow.addVideos",
+        "title": "Add Videos",
+        "category": "Subtitle Flow",
+        "icon": "$(add)"
+      },
+      {
+        "command": "subtitleFlow.runPending",
+        "title": "Run Pending Tasks",
+        "category": "Subtitle Flow",
+        "icon": "$(run-all)"
+      },
+      {
+        "command": "subtitleFlow.pauseResumeTask",
+        "title": "Pause / Resume Task",
+        "category": "Subtitle Flow",
+        "icon": "$(debug-pause)"
+      },
+      {
+        "command": "subtitleFlow.retryTask",
+        "title": "Retry Failed Task",
+        "category": "Subtitle Flow",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "subtitleFlow.revealInOS",
+        "title": "Reveal in OS File Manager",
+        "category": "Subtitle Flow",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "subtitleFlow.clearStaleTasks",
+        "title": "Clear Stale Tasks",
+        "category": "Subtitle Flow",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "subtitleFlow.deleteTask",
+        "title": "Delete Task",
+        "category": "Subtitle Flow",
+        "icon": "$(trash)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "subtitleFlow.addVideos",
+          "when": "view == subtitleFlowTasks",
+          "group": "navigation@1"
+        },
+        {
+          "command": "subtitleFlow.runPending",
+          "when": "view == subtitleFlowTasks",
+          "group": "navigation@2"
+        },
+        {
+          "command": "subtitleFlow.clearStaleTasks",
+          "when": "view == subtitleFlowTasks",
+          "group": "navigation@3"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "subtitleFlow.pauseResumeTask",
+          "when": "view == subtitleFlowTasks && viewItem == task",
+          "group": "inline@1"
+        },
+        {
+          "command": "subtitleFlow.retryTask",
+          "when": "view == subtitleFlowTasks && viewItem == taskFailed",
+          "group": "inline@1"
+        },
+        {
+          "command": "subtitleFlow.revealInOS",
+          "when": "view == subtitleFlowTasks && viewItem =~ /^task/",
+          "group": "context@1"
+        },
+        {
+          "command": "subtitleFlow.deleteTask",
+          "when": "view == subtitleFlowTasks && viewItem =~ /^task/",
+          "group": "inline@3"
+        },
+        {
+          "command": "subtitleFlow.deleteTask",
+          "when": "view == subtitleFlowTasks && viewItem =~ /^task/",
+          "group": "context@3"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Subtitle Flow",
+      "properties": {
+        "subtitleFlow.maxConcurrency": {
+          "type": "number",
+          "default": 2,
+          "description": "Maximum number of parallel transcription tasks."
+        },
+        "subtitleFlow.targetLanguages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "zh-CN"
+          ],
+          "description": "List of target languages for translation (BCP-47 codes). 默认为中文。"
+        },
+        "subtitleFlow.whisperModel": {
+          "type": "string",
+          "default": "tiny",
+          "enum": [
+            "tiny",
+            "base",
+            "small",
+            "medium",
+            "large",
+            "large-v2",
+            "large-v3"
+          ],
+          "description": "Whisper model name (used to locate ggml-<model>.bin)."
+        },
+        "subtitleFlow.whisperBinary": {
+          "type": "string",
+          "default": "whisper",
+          "description": "Path to the whisper executable (e.g. whisper or /usr/local/bin/whisper)"
+        },
+        "subtitleFlow.whisperModelPath": {
+          "type": "string",
+          "default": "",
+          "description": "Full path to the whisper model .bin file. If empty, auto-searches common locations."
+        },
+        "subtitleFlow.whisperLanguage": {
+          "type": "string",
+          "default": "ja",
+          "enum": [
+            "auto",
+            "ja",
+            "zh",
+            "en"
+          ],
+          "description": "Source language spoken in the video. 已简化为默认日语 (ja)。"
+        },
+        "subtitleFlow.complianceRulesPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to YAML compliance lexicon file. If empty, uses the built-in default lexicon."
+        },
+        "subtitleFlow.autoRun": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically start processing when videos are added."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "npm run check-types && npm run lint && node esbuild.js",
+    "watch": "npm-run-all -p watch:*",
+    "watch:esbuild": "node esbuild.js --watch",
+    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
+    "package": "npm run check-types && npm run lint && node esbuild.js --production",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "generate-issue-notes": "node scripts/generate_issue_notes.js --notes issue-notes/20260301-142215-305.md --scan tmp out archives",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "@types/vscode": "^1.109.0",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.5.2",
+    "esbuild": "^0.27.2",
+    "eslint": "^9.39.2",
+    "npm-run-all": "^4.1.5",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.54.0"
+  },
+  "dependencies": {
+    "axios": "^1.13.5",
+    "js-yaml": "^4.1.0"
+  }
+}
