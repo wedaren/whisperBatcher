@@ -60,7 +60,9 @@ export class OptimizeService {
 
             // Build LLM prompt
             const numberedLines = sanitizedTexts.map((t, idx) => `[${idx + 1}] ${t}`).join('\n');
-            const response = await this.llmClient.chat([
+            let rawResponse = '';
+            try {
+                const response = await this.llmClient.chat([
                 {
                     role: 'system',
                     content:
@@ -70,10 +72,23 @@ export class OptimizeService {
                         'Keep the exact same number of lines. Do not add any explanations.',
                 },
                 { role: 'user', content: numberedLines },
-            ], { signal: options?.signal });
+                ], { signal: options?.signal });
+                rawResponse = response.content || '';
+            } catch (err) {
+                this.writeOptimizeDebug(path.dirname(rawSrtPath), `optimize_chunk${i + 1}_error`, {
+                    chunkIndex: i + 1,
+                    chunkEntries: chunkEntries.map((e) => ({ index: e.index, startTime: e.startTime, endTime: e.endTime, text: e.text })),
+                    sanitizedTexts: sanitizedTexts,
+                    numberedPrompt: sanitizedTexts.map((t, idx) => `[${idx + 1}] ${t}`).join('\n'),
+                    llmError: String(err),
+                });
+                throw err;
+            }
 
             // Parse response
-            const rawResponse = response.content || '';
+            
+            
+            
             let resultTexts = this.parseNumberedResponse(rawResponse, sanitizedTexts.length);
 
             // Quality check: block count
@@ -113,6 +128,15 @@ export class OptimizeService {
             // Prompt leak detection
             for (const t of restoredTexts) {
                 if (this.containsPromptLeak(t)) {
+                    this.writeOptimizeDebug(path.dirname(rawSrtPath), `optimize_chunk${i + 1}_promptleak`, {
+                        chunkIndex: i + 1,
+                        chunkEntries: chunkEntries.map((e) => ({ index: e.index, startTime: e.startTime, endTime: e.endTime, text: e.text })),
+                        sanitizedTexts: sanitizedTexts,
+                        numberedPrompt: sanitizedTexts.map((t, idx) => `[${idx + 1}] ${t}`).join('\n'),
+                        rawResponse: rawResponse,
+                        leakedLine: t,
+                    });
+
                     throw new Error(`LLM prompt leaked in optimize output at chunk ${i + 1}`);
                 }
             }
@@ -140,6 +164,25 @@ export class OptimizeService {
         fs.writeFileSync(llmSrtPath, formatSrt(optimizedEntries), 'utf-8');
 
         return { llmSrtPath, complianceHits: totalHits };
+    }
+
+    private writeOptimizeDebug(outDir: string, prefix: string, data: any) {
+        try {
+            const debugDir = path.join(outDir, 'llm-debug');
+            if (!fs.existsSync(debugDir)) { fs.mkdirSync(debugDir, { recursive: true }); }
+            const ts = new Date().toISOString().replace(/[:.]/g, '-');
+            const base = path.join(debugDir, `${prefix}_${ts}`);
+            fs.writeFileSync(`${base}.json`, JSON.stringify(data, null, 2), 'utf-8');
+            if (data.numberedPrompt) {
+                fs.writeFileSync(`${base}.prompt.txt`, data.numberedPrompt, 'utf-8');
+            }
+            if (data.rawResponse) {
+                fs.writeFileSync(`${base}.response.txt`, data.rawResponse, 'utf-8');
+            }
+        } catch (e) {
+            // eslint-disable-next-line no-console
+            console.error('Failed to write llm debug dump', e);
+        }
     }
 
     private parseNumberedResponse(text: string, expectedCount: number): string[] {

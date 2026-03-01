@@ -95,7 +95,9 @@ export class TranslateService {
 
             // Build translation prompt
             const numberedLines = sanitizedTexts.map((t, idx) => `[${idx + 1}] ${t}`).join('\n');
-            const response = await this.llmClient.chat([
+            let rawResponse = '';
+            try {
+                const response = await this.llmClient.chat([
                 {
                     role: 'system',
                     content:
@@ -105,8 +107,19 @@ export class TranslateService {
                         'Do not add explanations or notes.',
                 },
                 { role: 'user', content: numberedLines },
-            ], { signal: options?.signal });
-            const rawResponse = response.content || '';
+                ], { signal: options?.signal });
+                rawResponse = response.content || '';
+            } catch (err) {
+                // write debug dump then rethrow
+                this.writeChunkDebug(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_chunk${i + 1}`, {
+                    chunkIndex: i + 1,
+                    chunkEntries: chunkEntries.map((e) => ({ index: e.index, startTime: e.startTime, endTime: e.endTime, text: e.text })),
+                    sanitizedTexts: sanitizedTexts,
+                    numberedPrompt: sanitizedTexts.map((t, idx) => `[${idx + 1}] ${t}`).join('\n'),
+                    llmError: String(err),
+                });
+                throw err;
+            }
 
             // Parse response
             let resultTexts = this.parseNumberedResponse(rawResponse, sanitizedTexts.length);
@@ -133,6 +146,17 @@ export class TranslateService {
                     log(`Translate [${targetLang}]: chunk ${i + 1}/${chunks.length} refused by LLM due to safety policy. Falling back to original text.`);
                     resultTexts = [...sanitizedTexts];
                 } else {
+                    // dump debug info before throwing so user can inspect
+                    this.writeChunkDebug(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_chunk${i + 1}_mismatch`, {
+                        chunkIndex: i + 1,
+                        chunkEntries: chunkEntries.map((e) => ({ index: e.index, startTime: e.startTime, endTime: e.endTime, text: e.text })),
+                        sanitizedTexts: sanitizedTexts,
+                        numberedPrompt: sanitizedTexts.map((t, idx) => `[${idx + 1}] ${t}`).join('\n'),
+                        rawResponse,
+                        parsedCount: resultTexts.length,
+                        expectedCount: sanitizedTexts.length,
+                    });
+
                     throw new Error(
                         `Translate chunk ${i + 1} (${targetLang}): block count mismatch ` +
                         `(expected ${sanitizedTexts.length}, got ${resultTexts.length})`
@@ -177,6 +201,16 @@ export class TranslateService {
             // Prompt leak detection
             for (const t of restoredTexts) {
                 if (this.containsPromptLeak(t)) {
+                    // dump debug info
+                    this.writeChunkDebug(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_chunk${i + 1}_promptleak`, {
+                        chunkIndex: i + 1,
+                        chunkEntries: chunkEntries.map((e) => ({ index: e.index, startTime: e.startTime, endTime: e.endTime, text: e.text })),
+                        sanitizedTexts: sanitizedTexts,
+                        numberedPrompt: sanitizedTexts.map((t, idx) => `[${idx + 1}] ${t}`).join('\n'),
+                        rawResponse,
+                        leakedLine: t,
+                    });
+
                     throw new Error(`LLM prompt leaked in translate output at chunk ${i + 1}`);
                 }
             }
@@ -187,14 +221,7 @@ export class TranslateService {
             log(`Translate [${targetLang}]: chunk ${i + 1}/${chunks.length} done`);
         }
 
-        // Write output
-        const outDir = options?.outputDir ?? path.dirname(llmSrtPath);
-        if (!fs.existsSync(outDir)) { fs.mkdirSync(outDir, { recursive: true }); }
-        const baseName = path.basename(llmSrtPath).replace(/\.llm\.srt$/i, '');
-        const translatedPath = path.join(outDir, `${baseName}.${targetLang}.srt`);
-        fs.writeFileSync(translatedPath, formatSrt(translatedEntries), 'utf-8');
-
-        return { translatedPath, complianceHits: totalHits };
+        return this.finalizeTranslateOutput(llmSrtPath, targetLang, translatedEntries, totalHits, options);
     }
 
     /**
@@ -307,5 +334,39 @@ export class TranslateService {
             return oneLine;
         }
         return oneLine.slice(0, maxLen) + '...';
+    }
+
+    // Write output (moved here to keep method structure correct)
+    private writeChunkDebug(outDir: string, prefix: string, data: any) {
+        try {
+            const debugDir = path.join(outDir, 'llm-debug');
+            if (!fs.existsSync(debugDir)) { fs.mkdirSync(debugDir, { recursive: true }); }
+            const ts = new Date().toISOString().replace(/[:.]/g, '-');
+            const base = path.join(debugDir, `${prefix}_${ts}`);
+            // JSON dump
+            fs.writeFileSync(`${base}.json`, JSON.stringify(data, null, 2), 'utf-8');
+            // also save prompt and rawResponse if present
+            if (data.numberedPrompt) {
+                fs.writeFileSync(`${base}.prompt.txt`, data.numberedPrompt, 'utf-8');
+            }
+            if (data.rawResponse) {
+                fs.writeFileSync(`${base}.response.txt`, data.rawResponse, 'utf-8');
+            }
+        } catch (e) {
+            // swallow debug write errors to avoid masking original error
+            // but log to console for developer visibility
+            // eslint-disable-next-line no-console
+            console.error('Failed to write llm debug dump', e);
+        }
+    }
+
+    // finish translateToLanguage output and return
+    private finalizeTranslateOutput(llmSrtPath: string, targetLang: string, translatedEntries: SrtEntry[], totalHits: number, options?: { outputDir?: string }) {
+        const outDir = options?.outputDir ?? path.dirname(llmSrtPath);
+        if (!fs.existsSync(outDir)) { fs.mkdirSync(outDir, { recursive: true }); }
+        const baseName = path.basename(llmSrtPath).replace(/\.llm\.srt$/i, '');
+        const translatedPath = path.join(outDir, `${baseName}.${targetLang}.srt`);
+        fs.writeFileSync(translatedPath, formatSrt(translatedEntries), 'utf-8');
+        return { translatedPath, complianceHits: totalHits };
     }
 }
