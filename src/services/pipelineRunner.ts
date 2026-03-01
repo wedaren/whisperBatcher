@@ -158,17 +158,18 @@ export class PipelineRunner {
             const primaryLang = targetLanguages[0];
             const primaryFinal = translateResult.paths[primaryLang] ?? Object.values(translateResult.paths)[0] ?? '';
 
-            // Copy primary final SRT next to video as <basename>.srt
+            // Copy LLM-optimized SRT next to video as <basename>.srt
+            // (Replaces previous behavior which copied the translated SRT)
             let primaryCopyPath = '';
             try {
-                if (primaryFinal && fs.existsSync(primaryFinal)) {
+                if (finalLlmSrtPath && fs.existsSync(finalLlmSrtPath)) {
                     primaryCopyPath = path.join(videoDir, `${baseName}.srt`);
                     // overwrite if exists
-                    fs.copyFileSync(primaryFinal, primaryCopyPath);
-                    logFn(`Copied primary final SRT to video dir: ${path.basename(primaryCopyPath)}`);
+                    fs.copyFileSync(finalLlmSrtPath, primaryCopyPath);
+                    logFn(`Copied LLM SRT to video dir: ${path.basename(primaryCopyPath)}`);
                 }
             } catch (e: any) {
-                logFn(`Warning: failed to copy final SRT to video dir: ${e.message || String(e)}`);
+                logFn(`Warning: failed to copy LLM SRT to video dir: ${e.message || String(e)}`);
             }
 
             this.taskStore.updateTask(taskId, {
@@ -178,7 +179,7 @@ export class PipelineRunner {
                     ...updatedTask.outputs,
                     translated: translateResult.paths,
                     folder: taskOutputDir,
-                    finalSrt: primaryCopyPath || primaryFinal,
+                    finalSrt: primaryCopyPath || finalLlmSrtPath,
                 },
                 complianceHits: (updatedTask.complianceHits || 0) + translateResult.totalComplianceHits,
             });
