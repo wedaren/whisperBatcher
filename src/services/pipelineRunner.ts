@@ -11,6 +11,7 @@ import { OptimizeService } from './optimizeService';
 import { TranslateService } from './translateService';
 import { ComplianceService } from './complianceService';
 import { Logger } from './logger';
+import { OPTIMIZE_CHUNK_SIZE, OPTIMIZE_OVERLAP } from '../constants';
 
 export class PipelineRunner {
     constructor(
@@ -87,8 +88,13 @@ export class PipelineRunner {
                 });
             } else if (fs.existsSync(legacyRaw)) {
                 // 将旧文件移动到输出目录
-                fs.renameSync(legacyRaw, rawSrtPath);
-                logFn(`阶段 1/3：将旧版原始字幕移动到输出目录 → ${path.basename(rawSrtPath)}`);
+                try {
+                    fs.renameSync(legacyRaw, rawSrtPath);
+                    logFn(`阶段 1/3：将旧版原始字幕移动到输出目录 → ${path.basename(rawSrtPath)}`);
+                } catch (e: any) {
+                    logFn(`警告：无法移动旧版原始字幕（${e.message || String(e)}），将重新转录`);
+                    finalRawSrtPath = rawSrtPath;
+                }
                 this.taskStore.updateTask(taskId, {
                     outputs: { ...task.outputs, raw: rawSrtPath, folder: taskOutputDir },
                 });
@@ -117,8 +123,13 @@ export class PipelineRunner {
                     outputs: { ...currentTask.outputs, llm: llmSrtPath, folder: taskOutputDir },
                 });
             } else if (fs.existsSync(legacyLlm)) {
-                fs.renameSync(legacyLlm, llmSrtPath);
-                logFn(`阶段 2/3：将旧版 LLM 字幕移动到输出目录 → ${path.basename(llmSrtPath)}`);
+                try {
+                    fs.renameSync(legacyLlm, llmSrtPath);
+                    logFn(`阶段 2/3：将旧版 LLM 字幕移动到输出目录 → ${path.basename(llmSrtPath)}`);
+                } catch (e: any) {
+                    logFn(`警告：无法移动旧版 LLM 字幕（${e.message || String(e)}），将重新优化`);
+                    finalLlmSrtPath = llmSrtPath;
+                }
                 this.taskStore.updateTask(taskId, {
                     outputs: { ...currentTask.outputs, llm: llmSrtPath, folder: taskOutputDir },
                 });
@@ -152,7 +163,7 @@ export class PipelineRunner {
             const translateResult = await this.translate.translateAll(
                 finalLlmSrtPath,
                 targetLanguages,
-                { signal, logFn, outputDir: videoDir, chunkSize: 50, overlap: 5 }
+                { signal, logFn, outputDir: videoDir, chunkSize: OPTIMIZE_CHUNK_SIZE, overlap: OPTIMIZE_OVERLAP }
             );
 
             const updatedTask = this.taskStore.getTask(taskId)!;

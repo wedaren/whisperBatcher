@@ -45,13 +45,13 @@ export class TaskTreeDataProvider implements vscode.TreeDataProvider<TaskTreeIte
         // (removed) combined Markdown task file; config and log are shown separately
 
         // Outputs folder
-        if ((task.outputs as any).folder) {
-            children.push(new TaskTreeItem(task, true, (task.outputs as any).folder, '📁 Outputs Folder'));
+        if (task.outputs.folder) {
+            children.push(new TaskTreeItem(task, true, task.outputs.folder, '📁 Outputs Folder'));
         }
 
         // Final user-facing SRT
-        if ((task.outputs as any).finalSrt) {
-            children.push(new TaskTreeItem(task, true, (task.outputs as any).finalSrt, '🎯 Final SRT'));
+        if (task.outputs.finalSrt) {
+            children.push(new TaskTreeItem(task, true, task.outputs.finalSrt, '🎯 Final SRT'));
         }
 
         if (task.outputs.config) {

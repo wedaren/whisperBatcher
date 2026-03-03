@@ -2,9 +2,7 @@
  * Generic OpenAI-compatible LLM HTTP client.
  */
 import * as vscode from 'vscode';
-import * as https from 'https';
-import * as http from 'http';
-import { URL } from 'url';
+import { LLM_MODEL_FAMILY } from '../constants';
 
 export interface LLMMessage {
     role: 'system' | 'user' | 'assistant';
@@ -22,11 +20,11 @@ export class LLMClient {
         options?: { temperature?: number; maxTokens?: number; signal?: AbortSignal }
     ): Promise<LLMResponse> {
         // Find the family of GPT-4o models using the official VS Code LM API selector
-        const models = await vscode.lm.selectChatModels({ family: 'gpt-4o' });
+        const models = await vscode.lm.selectChatModels({ family: LLM_MODEL_FAMILY });
 
         if (models.length === 0) {
             throw new Error(
-                'No gpt-4o language model found. Please ensure you are signed into GitHub Copilot ' +
+                `No ${LLM_MODEL_FAMILY} language model found. Please ensure you are signed into GitHub Copilot ` +
                 'and your VS Code version supports the LM API.'
             );
         }

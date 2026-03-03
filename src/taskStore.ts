@@ -116,8 +116,9 @@ export class TaskStore {
                 task.outputs.folder = undefined;
                 changed = true;
             }
-            if ((task as any).outputs.finalSrt && !(task as any).outputs.finalSrt) {
-                // noop - keep typing happy
+            if (task.outputs.finalSrt && !fs.existsSync(task.outputs.finalSrt)) {
+                task.outputs.finalSrt = undefined;
+                changed = true;
             }
             if (task.outputs.log && !fs.existsSync(task.outputs.log)) {
                 task.outputs.log = undefined;
@@ -132,9 +133,6 @@ export class TaskStore {
                     delete task.outputs.translated[lang];
                     changed = true;
                 }
-            }
-            if ((task as any).outputs.finalSrt && !(task as any).outputs.finalSrt) {
-                // noop placeholder for compatibility
             }
         }
         if (changed) { this.save(); }

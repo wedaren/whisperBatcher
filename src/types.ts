@@ -20,8 +20,6 @@ export interface TaskOutputs {
     log?: string;
     /** Absolute path to the task config file */
     config?: string;
-    /** Absolute path to the combined Markdown task file (frontmatter + logs) */
-    taskFile?: string;
     /** Absolute path to task output folder (e.g. <basename>.subtitle) */
     folder?: string;
     /** Absolute path to the final SRT meant for users (e.g. <basename>.<lang>.srt) */

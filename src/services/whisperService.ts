@@ -7,6 +7,7 @@ import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
+import { WHISPER_STDERR_LIMIT, WHISPER_STDOUT_LIMIT } from '../constants';
 
 export class WhisperService {
     /**
@@ -109,8 +110,8 @@ export class WhisperService {
                 if (code === 0) {
                     resolve();
                 } else {
-                    const errTail = stderr.length > 2000 ? stderr.substring(stderr.length - 2000) : stderr;
-                    const outTail = stdout.length > 1000 ? stdout.substring(stdout.length - 1000) : stdout;
+                    const errTail = stderr.length > WHISPER_STDERR_LIMIT ? stderr.substring(stderr.length - WHISPER_STDERR_LIMIT) : stderr;
+                    const outTail = stdout.length > WHISPER_STDOUT_LIMIT ? stdout.substring(stdout.length - WHISPER_STDOUT_LIMIT) : stdout;
                     reject(new Error(
                         `whisper exited with code ${code}.\n` +
                         `stderr (tail): ...\n${errTail}\n` +

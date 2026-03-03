@@ -1,5 +1,9 @@
 /**
  * OptimizeService：基于 LLM 的原始 SRT 可读性优化服务。
+ *
+ * 错误处理设计意图：OptimizeService 在遇到错误时抛出异常。
+ * 这是有意为之——损坏的优化输出如果传播到翻译阶段，会导致更难诊断的问题。
+ * 宁可在此阶段快速失败，也不要让坏数据继续流经流水线。
  */
 import * as fs from 'fs';
 import * as path from 'path';
@@ -10,9 +14,10 @@ import {
     formatSrt,
     chunkSrtEntries,
     extractTexts,
-    mergeTexts,
 } from './srtParser';
 import { SrtEntry } from '../types';
+import { OPTIMIZE_CHUNK_SIZE, OPTIMIZE_OVERLAP } from '../constants';
+import { parseNumberedResponse, isRefusal, writeDebugDump, buildNumberedPrompt, SanitizeEntry } from './llmUtils';
 
 export class OptimizeService {
     constructor(
@@ -55,7 +60,7 @@ export class OptimizeService {
             throw new Error('Raw SRT is empty or unparseable');
         }
 
-        const chunks = chunkSrtEntries(entries, options?.chunkSize ?? 50, options?.overlap ?? 5);
+        const chunks = chunkSrtEntries(entries, options?.chunkSize ?? OPTIMIZE_CHUNK_SIZE, options?.overlap ?? OPTIMIZE_OVERLAP);
         const optimizedTexts: Array<string | undefined> = new Array(entries.length).fill(undefined);
         let totalHits = 0;
 
@@ -68,7 +73,7 @@ export class OptimizeService {
 
             // 合规化替换（sanitize）
             const sanitizedTexts: string[] = [];
-            const restoreMaps: Array<{ idx: number; map: any[] }> = [];
+            const restoreMaps: SanitizeEntry[] = [];
 
             for (let j = 0; j < texts.length; j++) {
                 const { sanitized, restoreMap, hits } = this.compliance.sanitize(texts[j]);
@@ -78,7 +83,7 @@ export class OptimizeService {
             }
 
             // 构建发送给 LLM 的提示（prompt）
-            const numberedLines = sanitizedTexts.map((t, idx) => `[${idx + 1}] ${t}`).join('\n');
+            const numberedLines = buildNumberedPrompt(sanitizedTexts);
             let rawResponse = '';
             try {
                 const response = await this.llmClient.chat([
@@ -94,22 +99,22 @@ export class OptimizeService {
                 ], { signal: options?.signal });
                 rawResponse = response.content || '';
             } catch (err) {
-                this.writeOptimizeDebug(path.dirname(rawSrtPath), `optimize_chunk${i + 1}_error`, {
+                writeDebugDump(path.dirname(rawSrtPath), `optimize_chunk${i + 1}_error`, {
                     chunkIndex: i + 1,
                     chunkEntries: chunkEntries.map((e) => ({ index: e.index, startTime: e.startTime, endTime: e.endTime, text: e.text })),
                     sanitizedTexts: sanitizedTexts,
-                    numberedPrompt: sanitizedTexts.map((t, idx) => `[${idx + 1}] ${t}`).join('\n'),
+                    numberedPrompt: numberedLines,
                     llmError: String(err),
                 });
                 throw err;
             }
 
             // 解析 LLM 响应
-            let resultTexts = this.parseNumberedResponse(rawResponse, sanitizedTexts.length);
+            let resultTexts = parseNumberedResponse(rawResponse, sanitizedTexts.length);
 
             // 质量检查：块数量是否匹配
             if (resultTexts.length !== sanitizedTexts.length) {
-                if (this.isRefusal(rawResponse)) {
+                if (isRefusal(rawResponse)) {
                     log(`优化：块 ${i + 1}/${chunks.length} 因安全策略被 LLM 拒绝，回退到原始文本。`);
                     resultTexts = [...sanitizedTexts];
                 } else {
@@ -144,11 +149,11 @@ export class OptimizeService {
             // 提示词（prompt）泄露检测
             for (const t of restoredTexts) {
                 if (this.containsPromptLeak(t)) {
-                    this.writeOptimizeDebug(path.dirname(rawSrtPath), `optimize_chunk${i + 1}_promptleak`, {
+                    writeDebugDump(path.dirname(rawSrtPath), `optimize_chunk${i + 1}_promptleak`, {
                         chunkIndex: i + 1,
                         chunkEntries: chunkEntries.map((e) => ({ index: e.index, startTime: e.startTime, endTime: e.endTime, text: e.text })),
                         sanitizedTexts: sanitizedTexts,
-                        numberedPrompt: sanitizedTexts.map((t, idx) => `[${idx + 1}] ${t}`).join('\n'),
+                        numberedPrompt: numberedLines,
                         rawResponse: rawResponse,
                         leakedLine: t,
                     });
@@ -182,44 +187,6 @@ export class OptimizeService {
         return { llmSrtPath, complianceHits: totalHits };
     }
 
-    private writeOptimizeDebug(outDir: string, prefix: string, data: any) {
-        try {
-            const debugDir = path.join(outDir, '.subtitle', 'llm-debug');
-            if (!fs.existsSync(debugDir)) { fs.mkdirSync(debugDir, { recursive: true }); }
-            const ts = new Date().toISOString().replace(/[:.]/g, '-');
-            const base = path.join(debugDir, `${prefix}_${ts}`);
-            fs.writeFileSync(`${base}.json`, JSON.stringify(data, null, 2), 'utf-8');
-            if (data.numberedPrompt) {
-                fs.writeFileSync(`${base}.prompt.txt`, data.numberedPrompt, 'utf-8');
-            }
-            if (data.rawResponse) {
-                fs.writeFileSync(`${base}.response.txt`, data.rawResponse, 'utf-8');
-            }
-        } catch (e) {
-            // eslint-disable-next-line no-console
-            console.error('写入 llm 调试转储失败', e);
-        }
-    }
-
-    private parseNumberedResponse(text: string, expectedCount: number): string[] {
-        const lines = text.trim().split('\n').filter((l) => l.trim());
-        const result: string[] = [];
-
-        for (const line of lines) {
-            const match = line.match(/^\[(\d+)\]\s*(.*)/);
-            if (match) {
-                result.push(match[2].trim());
-            }
-        }
-
-        // 回退：如果编号解析失败且行数与预期相同，则直接使用原始行
-        if (result.length === 0 && lines.length === expectedCount) {
-            return lines.map((l) => l.trim());
-        }
-
-        return result;
-    }
-
     private containsPromptLeak(text: string): boolean {
         const leakPatterns = [
             /you are a subtitle/i,
@@ -228,19 +195,5 @@ export class OptimizeService {
             /do not add any explanation/i,
         ];
         return leakPatterns.some((p) => p.test(text));
-    }
-
-    private isRefusal(text: string): boolean {
-        const lower = text.toLowerCase();
-        return (
-            lower.includes("sorry, i can't") ||
-            lower.includes("sorry, i cannot") ||
-            lower.includes("as an ai language model") ||
-            lower.includes("i'm unable to") ||
-            lower.includes("i am unable to") ||
-            lower.includes("does not comply") ||
-            lower.includes("violates") ||
-            lower.includes("safety policy")
-        );
     }
 }

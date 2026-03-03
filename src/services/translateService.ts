@@ -1,5 +1,9 @@
 /**
  * TranslateService: LLM-based subtitle translation to multiple target languages.
+ *
+ * 错误处理设计意图：TranslateService 在遇到错误时静默回退到 sanitized 原文。
+ * 这是有意为之——单个坏块不应导致整个翻译丢失。对于翻译而言，
+ * 保留原文（即使未翻译）比完全中断流水线更好。
  */
 import * as fs from 'fs';
 import * as path from 'path';
@@ -10,25 +14,10 @@ import {
     formatSrt,
     chunkSrtEntries,
     extractTexts,
-    mergeTexts,
 } from './srtParser';
 import { SrtEntry } from '../types';
-
-/** Map of language codes to human-readable names for prompts */
-const LANG_NAMES: Record<string, string> = {
-    'zh-CN': 'Simplified Chinese',
-    'zh-TW': 'Traditional Chinese',
-    'en': 'English',
-    'ja': 'Japanese',
-    'ko': 'Korean',
-    'fr': 'French',
-    'de': 'German',
-    'es': 'Spanish',
-    'pt': 'Portuguese',
-    'ru': 'Russian',
-    'it': 'Italian',
-    'ar': 'Arabic',
-};
+import { TRANSLATE_CHUNK_SIZE, TRANSLATE_OVERLAP, SIMILARITY_THRESHOLD, UNTRANSLATED_LINE_RATIO, ENGLISH_DETECTION_RATIO, LANG_NAMES } from '../constants';
+import { parseNumberedResponse, isRefusal, writeDebugDump, buildNumberedPrompt, SanitizeEntry } from './llmUtils';
 
 export class TranslateService {
     constructor(
@@ -54,7 +43,7 @@ export class TranslateService {
          * 2. 分块（chunk）：将条目按配置或默认的 `chunkSize` / `overlap` 分成多个块；
          *    每个块包含：
          *      - chunk 范围（chunkStart..chunkEnd）
-         *      - core 区域（coreStart..coreEnd）为该块的“核心”部分
+         *      - core 区域（coreStart..coreEnd）为该块的"核心"部分
          *      - 前后重叠区用于保持上下文一致性并避免边界断裂
          *    这样可以在保持上下文的同时只把核心区域的翻译结果合并回最终输出，
          *    避免重叠区域被不同块的结果覆盖产生不一致。
@@ -63,7 +52,7 @@ export class TranslateService {
          *    - Prompt 要求仅输出编号行，不要额外注释；以保持行对齐便于解析。
          * 5. 解析与回退：解析 LLM 响应为行数组；若解析/匹配失败或被拒绝，则回退到 sanitized 文本并写 debug。
          * 6. 恢复占位符与合规检测：将占位符恢复回原始敏感词，检测是否有占位符泄露并做 post-sanitize。
-         * 7. 提示词泄露检测：检查翻译结果中是否包含 prompt 内容（如“translate the following”），若发现用回退策略处理并写 debug。
+         * 7. 提示词泄露检测：检查翻译结果中是否包含 prompt 内容（如"translate the following"），若发现用回退策略处理并写 debug。
          * 8. 写回：把块的核心区域（core）合并进最终条目数组，最后用 `formatSrt` 写出 `*.<lang>.srt`。
          *
          * 维护与调优要点：
@@ -75,7 +64,7 @@ export class TranslateService {
         }
 
         const langName = LANG_NAMES[targetLang] || targetLang;
-        const chunks = chunkSrtEntries(entries, options?.chunkSize ?? 20, options?.overlap ?? 0);
+        const chunks = chunkSrtEntries(entries, options?.chunkSize ?? TRANSLATE_CHUNK_SIZE, options?.overlap ?? TRANSLATE_OVERLAP);
         // translatedTexts 保存全局每一条的翻译结果（仅填充 core 区域），最后与原条目合并
         const translatedTexts: Array<string | undefined> = new Array(entries.length).fill(undefined);
         let totalHits = 0;
@@ -106,7 +95,7 @@ export class TranslateService {
 
             // Compliance sanitize
             const sanitizedTexts: string[] = [];
-            const restoreMaps: Array<{ idx: number; map: any[] }> = [];
+            const restoreMaps: SanitizeEntry[] = [];
             let chunkHits = 0; // 本块的合规命中计数
 
             for (let j = 0; j < texts.length; j++) {
@@ -118,7 +107,7 @@ export class TranslateService {
             }
 
             // Build translation prompt
-            const numberedLines = sanitizedTexts.map((t, idx) => `[${idx + 1}] ${t}`).join('\n');
+            const numberedLines = buildNumberedPrompt(sanitizedTexts);
             let rawResponse = '';
             try {
                 const response = await this.llmClient.chat([
@@ -135,18 +124,18 @@ export class TranslateService {
                 rawResponse = response.content || '';
             } catch (err) {
                 // write debug dump then rethrow
-                this.writeChunkDebug(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_chunk${i + 1}`, {
+                writeDebugDump(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_chunk${i + 1}`, {
                     chunkIndex: i + 1,
                     chunkEntries: chunkEntries.map((e) => ({ index: e.index, startTime: e.startTime, endTime: e.endTime, text: e.text })),
                     sanitizedTexts: sanitizedTexts,
-                    numberedPrompt: sanitizedTexts.map((t, idx) => `[${idx + 1}] ${t}`).join('\n'),
+                    numberedPrompt: numberedLines,
                     llmError: String(err),
                 });
                 throw err;
             }
 
             // Parse response
-            let resultTexts = this.parseNumberedResponse(rawResponse, sanitizedTexts.length);
+            let resultTexts = parseNumberedResponse(rawResponse, sanitizedTexts.length);
             log(
                 `Translate [${targetLang}]: 块 ${i + 1}/${chunks.length} 响应长度=${rawResponse.length} 字符，解析=${resultTexts.length}/${sanitizedTexts.length}`
             );
@@ -164,16 +153,16 @@ export class TranslateService {
                     `Translate [${targetLang}]: 块 ${i + 1}/${chunks.length} 解析失败；响应前几行=${rawLines || '(空)'}`
                 );
 
-                if (this.isRefusal(rawResponse)) {
+                if (isRefusal(rawResponse)) {
                     log(`Translate [${targetLang}]: 块 ${i + 1}/${chunks.length} 被 LLM 拒绝（安全策略），回退到原始文本。`);
                     resultTexts = [...sanitizedTexts];
                 } else {
                     // dump debug info and fall back to sanitized texts instead of throwing
-                    this.writeChunkDebug(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_chunk${i + 1}_mismatch`, {
+                    writeDebugDump(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_chunk${i + 1}_mismatch`, {
                         chunkIndex: i + 1,
                         chunkEntries: chunkEntries.map((e) => ({ index: e.index, startTime: e.startTime, endTime: e.endTime, text: e.text })),
                         sanitizedTexts: sanitizedTexts,
-                        numberedPrompt: sanitizedTexts.map((t, idx) => `[${idx + 1}] ${t}`).join('\n'),
+                        numberedPrompt: numberedLines,
                         rawResponse,
                         parsedCount: resultTexts.length,
                         expectedCount: sanitizedTexts.length,
@@ -189,13 +178,13 @@ export class TranslateService {
                 const similarCount = resultTexts.filter(
                     (t, idx) => this.isSimilar(t, sanitizedTexts[idx])
                 ).length;
-                if (similarCount > sanitizedTexts.length * 0.8) {
+                if (similarCount > sanitizedTexts.length * UNTRANSLATED_LINE_RATIO) {
                     // write debug and fallback rather than throwing
-                    this.writeChunkDebug(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_chunk${i + 1}_similar`, {
+                    writeDebugDump(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_chunk${i + 1}_similar`, {
                         chunkIndex: i + 1,
                         chunkEntries: chunkEntries.map((e) => ({ index: e.index, startTime: e.startTime, endTime: e.endTime, text: e.text })),
                         sanitizedTexts: sanitizedTexts,
-                        numberedPrompt: sanitizedTexts.map((t, idx) => `[${idx + 1}] ${t}`).join('\n'),
+                        numberedPrompt: numberedLines,
                         rawResponse,
                         similarCount,
                         total: sanitizedTexts.length,
@@ -215,7 +204,7 @@ export class TranslateService {
                         restored = this.compliance.restore(text, mapEntry.map);
                     } catch (e) {
                         // fallback to sanitized original on restore failure
-                        this.writeChunkDebug(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_chunk${i + 1}_restorefail`, {
+                        writeDebugDump(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_chunk${i + 1}_restorefail`, {
                             chunkIndex: i + 1,
                             idx,
                             error: String(e),
@@ -225,7 +214,7 @@ export class TranslateService {
                 }
                 if (this.compliance.detectLeakage(restored)) {
                     // log and fallback rather than throwing
-                    this.writeChunkDebug(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_chunk${i + 1}_leak`, {
+                    writeDebugDump(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_chunk${i + 1}_leak`, {
                         chunkIndex: i + 1,
                         idx,
                         restored,
@@ -248,12 +237,12 @@ export class TranslateService {
             for (let k = 0; k < restoredTexts.length; k++) {
                 const t = restoredTexts[k];
                 if (this.containsPromptLeak(t)) {
-                    this.writeChunkDebug(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_chunk${i + 1}_promptleak`, {
+                    writeDebugDump(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_chunk${i + 1}_promptleak`, {
                         chunkIndex: i + 1,
                         idx: k,
                         chunkEntries: chunkEntries.map((e) => ({ index: e.index, startTime: e.startTime, endTime: e.endTime, text: e.text })),
                         sanitizedTexts: sanitizedTexts,
-                        numberedPrompt: sanitizedTexts.map((t2, idx) => `[${idx + 1}] ${t2}`).join('\n'),
+                        numberedPrompt: numberedLines,
                         rawResponse,
                         leakedLine: t,
                     });
@@ -303,24 +292,6 @@ export class TranslateService {
         return { paths, totalComplianceHits: totalHits };
     }
 
-    private parseNumberedResponse(text: string, expectedCount: number): string[] {
-        const lines = text.trim().split('\n').filter((l) => l.trim());
-        const result: string[] = [];
-
-        for (const line of lines) {
-            const match = line.match(/^\[(\d+)\]\s*(.*)/);
-            if (match) {
-                result.push(match[2].trim());
-            }
-        }
-
-        if (result.length === 0 && lines.length === expectedCount) {
-            return lines.map((l) => l.trim());
-        }
-
-        return result;
-    }
-
     /**
      * Check if two strings are suspiciously similar (>90% character overlap).
      */
@@ -336,7 +307,7 @@ export class TranslateService {
         for (let i = 0; i < Math.min(aLower.length, bLower.length); i++) {
             if (aLower[i] === bLower[i]) { matches++; }
         }
-        return matches / longer > 0.9;
+        return matches / longer > SIMILARITY_THRESHOLD;
     }
 
     private shouldSkipSimilarityCheck(targetLang: string, sourceTexts: string[]): boolean {
@@ -352,7 +323,7 @@ export class TranslateService {
         }
 
         const englishLikeChars = source.match(/[A-Za-z0-9\s.,!?;:'"()\-]/g)?.length ?? 0;
-        return englishLikeChars / meaningfulChars > 0.7;
+        return englishLikeChars / meaningfulChars > ENGLISH_DETECTION_RATIO;
     }
 
     private shouldDirectPassThrough(targetLang: string, sourceTexts: string[]): boolean {
@@ -369,56 +340,6 @@ export class TranslateService {
         return leakPatterns.some((p) => p.test(text));
     }
 
-    private isRefusal(text: string): boolean {
-        const lower = text.toLowerCase();
-        return (
-            lower.includes("sorry, i can't") ||
-            lower.includes("sorry, i cannot") ||
-            lower.includes("as an ai language model") ||
-            lower.includes("i'm unable to") ||
-            lower.includes("i am unable to") ||
-            lower.includes("does not comply") ||
-            lower.includes("violates") ||
-            lower.includes("safety policy")
-        );
-    }
-
-    private previewText(text: string, maxLen: number): string {
-        if (!text) {
-            return '';
-        }
-        const oneLine = text.replace(/\s+/g, ' ').trim();
-        if (oneLine.length <= maxLen) {
-            return oneLine;
-        }
-        return oneLine.slice(0, maxLen) + '...';
-    }
-
-    // Write output (moved here to keep method structure correct)
-    private writeChunkDebug(outDir: string, prefix: string, data: any) {
-        try {
-            const debugDir = path.join(outDir, '.subtitle', 'llm-debug');
-            if (!fs.existsSync(debugDir)) { fs.mkdirSync(debugDir, { recursive: true }); }
-            const ts = new Date().toISOString().replace(/[:.]/g, '-');
-            const base = path.join(debugDir, `${prefix}_${ts}`);
-            // JSON dump
-            fs.writeFileSync(`${base}.json`, JSON.stringify(data, null, 2), 'utf-8');
-            // also save prompt and rawResponse if present
-            if (data.numberedPrompt) {
-                fs.writeFileSync(`${base}.prompt.txt`, data.numberedPrompt, 'utf-8');
-            }
-            if (data.rawResponse) {
-                fs.writeFileSync(`${base}.response.txt`, data.rawResponse, 'utf-8');
-            }
-        } catch (e) {
-            // swallow debug write errors to avoid masking original error
-            // but log to console for developer visibility
-            // eslint-disable-next-line no-console
-            console.error('写入 llm 调试转储失败', e);
-        }
-    }
-
-    // finish translateToLanguage output and return
     private finalizeTranslateOutput(llmSrtPath: string, targetLang: string, translatedEntries: SrtEntry[], totalHits: number, options?: { outputDir?: string }) {
         const outDir = options?.outputDir ?? path.dirname(llmSrtPath);
         if (!fs.existsSync(outDir)) { fs.mkdirSync(outDir, { recursive: true }); }
