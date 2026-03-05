@@ -1,9 +1,9 @@
 /**
  * OptimizeService：基于 LLM 的原始 SRT 可读性优化服务。
  *
- * 错误处理设计意图：OptimizeService 在遇到错误时抛出异常。
- * 这是有意为之——损坏的优化输出如果传播到翻译阶段，会导致更难诊断的问题。
- * 宁可在此阶段快速失败，也不要让坏数据继续流经流水线。
+ * 错误处理设计意图：OptimizeService 在 LLM 瞬态错误时静默回退到 sanitized 原文。
+ * 这与 TranslateService 的设计一致——单个坏块不应导致整个流水线中断。
+ * LLM 客户端已内置重试机制，此处仅处理重试耗尽后的最终回退。
  */
 import * as fs from 'fs';
 import * as path from 'path';
@@ -106,7 +106,14 @@ export class OptimizeService {
                     numberedPrompt: numberedLines,
                     llmError: String(err),
                 });
-                throw err;
+                log(`优化：块 ${i + 1}/${chunks.length} LLM 调用失败（${String(err)}），回退到原始文本。`);
+                // Fall back to sanitized originals instead of interrupting the pipeline
+                const { chunkStart, coreStart, coreEnd } = chunkObj;
+                for (let g = coreStart; g <= coreEnd; g++) {
+                    const localIdx = g - chunkStart;
+                    optimizedTexts[g] = sanitizedTexts[localIdx];
+                }
+                continue;
             }
 
             // 解析 LLM 响应
@@ -116,6 +123,57 @@ export class OptimizeService {
             if (resultTexts.length !== sanitizedTexts.length) {
                 if (isRefusal(rawResponse)) {
                     log(`优化：块 ${i + 1}/${chunks.length} 因安全策略被 LLM 拒绝，回退到原始文本。`);
+
+                    // 将触发安全策略拒绝的 prompt 写到与日志文件相同目录，方便排查
+                    try {
+                        const outDir = path.dirname(rawSrtPath);
+                        const baseName = path.basename(rawSrtPath).replace(/\.raw\.srt$/i, '');
+                        const ts = new Date().toISOString().replace(/[:.]/g, '-');
+                        const promptFile = path.join(outDir, `${baseName}.llm-refused-prompt.chunk${i + 1}.${ts}.txt`);
+                        fs.writeFileSync(promptFile, numberedLines, 'utf-8');
+                        log(`已写入 LLM 拒绝 prompt：${promptFile}`);
+                    } catch (e) {
+                        // 写入失败不应中断流程，仅在调试输出中记录
+                        try { log(`写入被拒绝 prompt 失败：${String(e)}`); } catch { /* ignore */ }
+                    }
+
+                    // 发起另一个 LLM 请求，询问哪些词可能被安全审查，并把返回写入文件
+                    try {
+                        const outDir = path.dirname(rawSrtPath);
+                        const ts = new Date().toISOString().replace(/[:.]/g, '-');
+                        const analysisPrompt = '分析哪个词会被安全审查：\n' +
+                            sanitizedTexts.map((t, idx) => `[${idx + 1}] ${t}`).join('\n');
+
+                        const analysisResponse = await this.llmClient.chat([
+                            { role: 'system', content: '你是安全审查分析助手。请列出输入文本中可能触发安全审查的词或短语，按行对应编号返回。' },
+                            { role: 'user', content: analysisPrompt },
+                        ], { signal: options?.signal });
+
+                        try {
+                            const baseName = path.basename(rawSrtPath).replace(/\.raw\.srt$/i, '');
+                            const analysisFile = path.join(outDir, `${baseName}.llm-refused-analysis.chunk${i + 1}.${ts}.txt`);
+                            fs.writeFileSync(analysisFile, analysisResponse.content || '', 'utf-8');
+                            log(`已写入 LLM 拒绝分析：${analysisFile}`);
+                        } catch (e) {
+                            try { log(`写入拒绝分析文件失败：${String(e)}`); } catch { /* ignore */ }
+                        }
+
+                        // 同时把分析结果写入集中调试目录 (.subtitle/llm-debug)
+                        try {
+                            writeDebugDump(path.dirname(rawSrtPath), `optimize_refused_analysis_chunk${i + 1}`, {
+                                chunkIndex: i + 1,
+                                chunkEntries: chunkEntries.map((e) => ({ index: e.index, startTime: e.startTime, endTime: e.endTime, text: e.text })),
+                                sanitizedTexts: sanitizedTexts,
+                                numberedPrompt: analysisPrompt,
+                                rawResponse: analysisResponse.content || '',
+                            });
+                        } catch (e) {
+                            try { log(`写入 .subtitle/llm-debug 失败：${String(e)}`); } catch { /* ignore */ }
+                        }
+                    } catch (e) {
+                        try { log(`LLM 拒绝分析请求失败：${String(e)}`); } catch { /* ignore */ }
+                    }
+
                     resultTexts = [...sanitizedTexts];
                 } else {
                     throw new Error(

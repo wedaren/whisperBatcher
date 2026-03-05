@@ -123,7 +123,6 @@ export class TranslateService {
                 ], { signal: options?.signal });
                 rawResponse = response.content || '';
             } catch (err) {
-                // write debug dump then rethrow
                 writeDebugDump(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_chunk${i + 1}`, {
                     chunkIndex: i + 1,
                     chunkEntries: chunkEntries.map((e) => ({ index: e.index, startTime: e.startTime, endTime: e.endTime, text: e.text })),
@@ -131,7 +130,14 @@ export class TranslateService {
                     numberedPrompt: numberedLines,
                     llmError: String(err),
                 });
-                throw err;
+                log(`Translate [${targetLang}]: 块 ${i + 1}/${chunks.length} LLM 调用失败（${String(err)}），回退到原始文本。`);
+                // Fall back to sanitized originals instead of interrupting the pipeline
+                const { chunkStart, coreStart, coreEnd } = chunkObj;
+                for (let g = coreStart; g <= coreEnd; g++) {
+                    const localIdx = g - chunkStart;
+                    translatedTexts[g] = sanitizedTexts[localIdx];
+                }
+                continue;
             }
 
             // Parse response
@@ -155,6 +161,56 @@ export class TranslateService {
 
                 if (isRefusal(rawResponse)) {
                     log(`Translate [${targetLang}]: 块 ${i + 1}/${chunks.length} 被 LLM 拒绝（安全策略），回退到原始文本。`);
+
+                    // 将触发安全策略拒绝的 prompt 写到与翻译输出同目录，方便排查
+                    try {
+                        const outDir = options?.outputDir ?? path.dirname(llmSrtPath);
+                        const baseName = path.basename(llmSrtPath).replace(/\.llm\.srt$/i, '');
+                        const ts = new Date().toISOString().replace(/[:.]/g, '-');
+                        const promptFile = path.join(outDir, `${baseName}.${targetLang}.llm-refused-prompt.chunk${i + 1}.${ts}.txt`);
+                        fs.writeFileSync(promptFile, numberedLines, 'utf-8');
+                        log(`已写入被拒绝的 LLM prompt：${promptFile}`);
+                    } catch (e) {
+                        try { log(`写入被拒绝 prompt 失败：${String(e)}`); } catch { /* ignore */ }
+                    }
+
+                    // 发起额外的 LLM 请求，分析哪些词会被安全审查，并把返回写到文件
+                    try {
+                        const outDir = options?.outputDir ?? path.dirname(llmSrtPath);
+                        const ts = new Date().toISOString().replace(/[:.]/g, '-');
+                        const analysisPrompt = '分析哪个词会被安全审查：\n' +
+                            sanitizedTexts.map((t, idx) => `[${idx + 1}] ${t}`).join('\n');
+
+                        const analysisResponse = await this.llmClient.chat([
+                            { role: 'system', content: '你是安全审查分析助手。请列出输入文本中可能触发安全审查的词或短语，按行对应编号返回。' },
+                            { role: 'user', content: analysisPrompt },
+                        ], { signal: options?.signal });
+
+                        try {
+                            const baseName = path.basename(llmSrtPath).replace(/\.llm\.srt$/i, '');
+                            const analysisFile = path.join(outDir, `${baseName}.${targetLang}.llm-refused-analysis.chunk${i + 1}.${ts}.txt`);
+                            fs.writeFileSync(analysisFile, analysisResponse.content || '', 'utf-8');
+                            log(`已写入被拒绝 LLM 分析：${analysisFile}`);
+                        } catch (e) {
+                            try { log(`写入被拒绝分析文件失败：${String(e)}`); } catch { /* ignore */ }
+                        }
+
+                        // 同时写入集中调试目录 (.subtitle/llm-debug)
+                        try {
+                            writeDebugDump(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_refused_analysis_chunk${i + 1}`, {
+                                chunkIndex: i + 1,
+                                chunkEntries: chunkEntries.map((e) => ({ index: e.index, startTime: e.startTime, endTime: e.endTime, text: e.text })),
+                                sanitizedTexts: sanitizedTexts,
+                                numberedPrompt: analysisPrompt,
+                                rawResponse: analysisResponse.content || '',
+                            });
+                        } catch (e) {
+                            try { log(`写入 .subtitle/llm-debug 失败：${String(e)}`); } catch { /* ignore */ }
+                        }
+                    } catch (e) {
+                        try { log(`LLM 被拒绝分析请求失败：${String(e)}`); } catch { /* ignore */ }
+                    }
+
                     resultTexts = [...sanitizedTexts];
                 } else {
                     // dump debug info and fall back to sanitized texts instead of throwing

@@ -36,6 +36,12 @@ export const WHISPER_STDERR_LIMIT = 2000;
 /** Max chars of stdout to include in whisper error messages */
 export const WHISPER_STDOUT_LIMIT = 1000;
 
+/** Maximum number of retries for transient LLM errors */
+export const LLM_MAX_RETRIES = 3;
+
+/** Base delay in ms for exponential backoff between LLM retries (1s, 2s, 4s) */
+export const LLM_RETRY_BASE_DELAY_MS = 1000;
+
 /** Map of language codes to human-readable names for LLM prompts */
 export const LANG_NAMES: Record<string, string> = {
     'zh-CN': 'Simplified Chinese',

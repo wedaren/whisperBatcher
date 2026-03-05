@@ -2,7 +2,20 @@
  * Generic OpenAI-compatible LLM HTTP client.
  */
 import * as vscode from 'vscode';
-import { LLM_MODEL_FAMILY } from '../constants';
+import { LLM_MODEL_FAMILY, LLM_MAX_RETRIES, LLM_RETRY_BASE_DELAY_MS } from '../constants';
+
+function isTransientError(err: any): boolean {
+    const msg = (err.message || String(err)).toLowerCase();
+    return msg.includes('no choices')
+        || msg.includes('response contained no')
+        || msg.includes('timeout')
+        || msg.includes('econnreset')
+        || msg.includes('rate limit');
+}
+
+function delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 export interface LLMMessage {
     role: 'system' | 'user' | 'assistant';
@@ -70,29 +83,40 @@ export class LLMClient {
             token = cts.token;
         }
 
-        try {
-            const chatResponse = await model.sendRequest(
-                vscodeMessages,
-                { justification: 'To optimize and translate subtitles' },
-                token
-            );
+        for (let attempt = 0; attempt <= LLM_MAX_RETRIES; attempt++) {
+            try {
+                const chatResponse = await model.sendRequest(
+                    vscodeMessages,
+                    { justification: 'To optimize and translate subtitles' },
+                    token
+                );
 
-            let content = '';
-            for await (const fragment of chatResponse.text) {
-                content += fragment;
-            }
+                let content = '';
+                for await (const fragment of chatResponse.text) {
+                    content += fragment;
+                }
 
-            return {
-                content,
-            };
-        } catch (err: any) {
-            if (options?.signal?.aborted) {
-                throw new Error('Aborted');
+                return {
+                    content,
+                };
+            } catch (err: any) {
+                if (options?.signal?.aborted) {
+                    throw new Error('Aborted');
+                }
+                if (attempt < LLM_MAX_RETRIES && isTransientError(err)) {
+                    const backoff = LLM_RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
+                    console.warn(`[LLMClient] Transient error (attempt ${attempt + 1}/${LLM_MAX_RETRIES}), retrying in ${backoff}ms: ${err.message || err}`);
+                    await delay(backoff);
+                    continue;
+                }
+                if (err instanceof vscode.LanguageModelError) {
+                    throw new Error(`Copilot LM Error: ${err.message}`);
+                }
+                throw err;
             }
-            if (err instanceof vscode.LanguageModelError) {
-                throw new Error(`Copilot LM Error: ${err.message}`);
-            }
-            throw err;
         }
+
+        // Should not reach here, but satisfy TypeScript
+        throw new Error('LLM request failed after all retries');
     }
 }
