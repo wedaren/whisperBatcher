@@ -1,19 +1,17 @@
 /**
  * VS Code 命令处理层。
- * 这一层主要负责和用户交互：采集输入、触发任务、展示提示信息。
- * 真正的任务状态修改和执行编排分别交给 TaskStore、TaskScheduler 和 PipelineRunner。
+ * 这一层只负责和用户交互：采集输入、触发 API、展示提示信息。
+ * 真正的任务状态修改和执行编排统一交给 SubtitleFlowApi，
+ * 这样命令、Copilot agent 和未来外部扩展可以复用同一套控制面。
  */
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { VIDEO_EXTENSIONS } from './constants';
-import { TaskStore } from './taskStore';
-import { TaskScheduler } from './services/taskScheduler';
 import { Logger } from './services/logger';
+import type { SubtitleFlowApi } from './publicApi';
 import { TaskTreeItem } from './views/taskTreeItem';
 
 export interface CommandDependencies {
-    taskStore: TaskStore;
-    scheduler: TaskScheduler;
+    api: SubtitleFlowApi;
     logger: Logger;
 }
 
@@ -28,7 +26,7 @@ export function registerCommands(
     context: vscode.ExtensionContext,
     deps: CommandDependencies
 ): void {
-    const { taskStore, scheduler, logger } = deps;
+    const { api, logger } = deps;
 
     // 添加视频并创建批量任务
     context.subscriptions.push(
@@ -116,33 +114,9 @@ export function registerCommands(
                 targetLanguages: targetLanguages.length > 0 ? targetLanguages : undefined
             };
 
-            let addedCount = 0;
-            for (const uri of uris) {
-                const videoPath = uri.fsPath;
-                logger.info(`addVideos: creating task for ${videoPath}`);
-
-                const task = taskStore.addTask(videoPath, taskConfig);
-
-                const videoDir = path.dirname(videoPath);
-                const baseName = path.basename(videoPath, path.extname(videoPath));
-                const suffix = vscode.workspace.getConfiguration('subtitleFlow').get<string>('outputFolderSuffix', '.subtitle');
-                const folderName = baseName + suffix;
-                const taskOutputDir = path.join(videoDir, folderName);
-                try { await vscode.workspace.fs.createDirectory(vscode.Uri.file(taskOutputDir)); } catch (e) { /* ignore */ }
-
-                const { configFilePath, logFilePath } = logger.createTaskLog(videoPath, task.id, taskOutputDir);
-                taskStore.updateTask(task.id, { outputs: { ...task.outputs, config: configFilePath, log: logFilePath, folder: taskOutputDir } });
-
-                const logFn = logger.createTaskLogFn(videoPath, task.id, taskOutputDir);
-                logFn('Task created and added to queue');
-                logFn(`Video: ${videoPath}`);
-                if (taskConfig.whisperModel || taskConfig.targetLanguages) {
-                    logFn(`Task Config: model=${taskConfig.whisperModel || 'global'}, langs=[${taskConfig.targetLanguages?.join(',') || 'global'}]`);
-                }
-
-                scheduler.enqueue(task.id);
-                addedCount++;
-            }
+            const inputs = uris.map((uri) => ({ videoPath: uri.fsPath }));
+            const tasks = await api.enqueueTasks(inputs, taskConfig);
+            const addedCount = tasks.length;
 
             vscode.window.showInformationMessage(
                 `Subtitle Flow: Added ${addedCount} video(s) to the queue.`
@@ -156,8 +130,19 @@ export function registerCommands(
     context.subscriptions.push(
         vscode.commands.registerCommand('subtitleFlow.runPending', () => {
             logger.info('Command: runPending triggered');
-            scheduler.runPending();
+            api.runPending();
             vscode.window.showInformationMessage('Subtitle Flow: Running pending tasks...');
+        })
+    );
+
+    // 打开 Copilot agent 聊天入口
+    context.subscriptions.push(
+        vscode.commands.registerCommand('subtitleFlow.agent', async () => {
+            logger.info('Command: agent triggered');
+            await vscode.commands.executeCommand(
+                'workbench.action.chat.open',
+                '@subtitleFlow'
+            );
         })
     );
 
@@ -166,7 +151,11 @@ export function registerCommands(
         vscode.commands.registerCommand('subtitleFlow.pauseResumeTask', (item?: TaskTreeItem) => {
             if (item && item.task) {
                 logger.info(`Command: pauseResumeTask for ${item.task.id}`);
-                scheduler.pauseOrResume(item.task.id);
+                if (item.task.status === 'paused') {
+                    api.resumeTask(item.task.id);
+                } else {
+                    api.pauseTask(item.task.id);
+                }
             }
         })
     );
@@ -176,7 +165,7 @@ export function registerCommands(
         vscode.commands.registerCommand('subtitleFlow.retryTask', (item?: TaskTreeItem) => {
             if (item && item.task) {
                 logger.info(`Command: retryTask for ${item.task.id}`);
-                scheduler.retry(item.task.id);
+                api.retryTask(item.task.id);
             }
         })
     );
@@ -197,8 +186,7 @@ export function registerCommands(
     context.subscriptions.push(
         vscode.commands.registerCommand('subtitleFlow.clearStaleTasks', () => {
             logger.info('Command: clearStaleTasks triggered');
-            const count = taskStore.cleanStaleTasks();
-            taskStore.refreshOutputStatus();
+            const count = api.cleanStaleTasks();
             vscode.window.showInformationMessage(
                 `Subtitle Flow: Cleaned ${count} stale task(s).`
             );
@@ -219,11 +207,8 @@ export function registerCommands(
                 );
 
                 if (confirm === 'Delete') {
-                    if (scheduler.isRunning(taskId)) {
-                        scheduler.pause(taskId);
-                    }
-                    taskStore.removeTask(taskId);
-                    logger.info(`Deleted task ${taskId}`);
+                    api.deleteTask(taskId);
+                    logger.info(`Deleted task ${taskId} via public API`);
                 }
             }
         })

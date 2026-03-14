@@ -11,8 +11,43 @@
 - 批量选择多个视频并创建任务
 - 按最大并发数自动调度任务
 - 在侧边栏查看任务状态和输出文件
+- 通过 `@subtitleFlow` Copilot agent 以后台任务方式控制长流程
+- 通过扩展 `exports` 暴露公共 API，便于其他 VS Code 插件直接消费
 - 为每个任务生成配置文件和执行日志
 - 通过合规词表做敏感词替换与恢复
+
+## Agent 工作方式
+
+Whisper 转录可能持续较长时间，因此 Copilot agent 不采用“单次对话同步等待完成”的设计，而是采用后台任务模型：
+
+1. `enqueue`
+   - 创建任务并返回任务 ID
+   - 不阻塞等待 Whisper 完成
+2. `run`
+   - 启动排队中的任务
+   - 真实执行交给 `TaskScheduler`
+3. `get` / `list`
+   - 查询当前状态、阶段、错误和输出路径
+   - 适合长耗时任务的轮询式交互
+4. `pause` / `resume` / `retry`
+   - 控制后台任务生命周期
+
+当前推荐的 Copilot 使用方式：
+
+- `@subtitleFlow /enqueue "/absolute/path/video.mp4"`
+- `@subtitleFlow /run`
+- `@subtitleFlow /get task_xxx`
+
+当前 participant 已经具备基础编排能力：
+
+- “生成字幕 /abs/video.mp4”
+  - 自动执行 `enqueue -> runPending -> get`
+- “重试失败任务”
+  - 自动执行 `retry -> runPending -> get`
+- “恢复刚才暂停的任务”
+  - 自动执行 `resume -> runPending -> get`
+- “查看最近任务状态”
+  - 自动定位最近任务并读取状态
 
 ## 依赖要求
 
@@ -45,6 +80,7 @@
 
 - 架构文档：[docs/architecture.md](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/docs/architecture.md)
 - 原理文档：[docs/principles.md](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/docs/principles.md)
+- 对外接入文档：[docs/developer-api.md](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/docs/developer-api.md)
 
 ## 当前状态
 

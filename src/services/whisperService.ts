@@ -45,7 +45,7 @@ export class WhisperService {
             const args = [
                 videoPath,
                 '--model', whisperModel,
-                '--output_dir', videoDir,
+                '--output_dir', outputDir,
                 '--output_format', 'srt'
             ];
 
@@ -67,18 +67,22 @@ export class WhisperService {
                 log(`Whisper 输出已重命名：${path.basename(whisperOutputPath)} → ${path.basename(rawSrtPath)}`);
             } else {
                 // 兼容 whisper 输出逻辑有轻微变化时的兜底搜索。
+                log(`未在预期位置找到 Whisper 输出：${whisperOutputPath}`);
                 let candidates = fs.readdirSync(outputDir).filter(
                     (f) => f.startsWith(baseName) && f.endsWith('.srt') && f !== path.basename(rawSrtPath)
                 );
+                log(`输出目录扫描结果：${outputDir} -> [${candidates.join(', ')}]`);
                 if (candidates.length === 0) {
                     candidates = fs.readdirSync(videoDir).filter(
                         (f) => f.startsWith(baseName) && f.endsWith('.srt') && f !== path.basename(rawSrtPath)
                     );
+                    log(`视频目录扫描结果：${videoDir} -> [${candidates.join(', ')}]`);
                 }
 
                 if (candidates.length > 0) {
                     const found = fs.existsSync(path.join(outputDir, candidates[0])) ? path.join(outputDir, candidates[0]) : path.join(videoDir, candidates[0]);
                     fs.renameSync(found, rawSrtPath);
+                    log(`通过兜底搜索找到 Whisper 输出：${found}`);
                 } else {
                     throw new Error(`Whisper did not produce SRT output for ${videoPath}. Check logs for details.`);
                 }

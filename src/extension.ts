@@ -4,8 +4,9 @@
  * 1. 创建日志器；
  * 2. 初始化任务存储；
  * 3. 装配所有核心服务；
- * 4. 注册侧边栏视图与命令；
- * 5. 在停用时回收资源。
+ * 4. 构建统一公共 API；
+ * 5. 注册侧边栏视图、命令和 Copilot agent；
+ * 6. 在停用时回收资源。
  */
 import * as vscode from 'vscode';
 import { TaskStore } from './taskStore';
@@ -19,11 +20,15 @@ import { TaskScheduler } from './services/taskScheduler';
 import { TaskTreeDataProvider } from './views/taskTreeProvider';
 import { Logger } from './services/logger';
 import { registerCommands } from './commands';
+import { SubtitleFlowApi } from './publicApi';
+import { SubtitleFlowApiService } from './services/subtitleFlowApi';
+import { registerSubtitleFlowTools } from './copilot/tools';
+import { registerSubtitleFlowParticipant } from './copilot/participant';
 
 let scheduler: TaskScheduler | undefined;
 let logger: Logger | undefined;
 
-export async function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext): Promise<SubtitleFlowApi> {
     // ── 0. 最先创建日志器，便于后续初始化过程全部可追踪 ──
     logger = new Logger();
     logger.info('Subtitle Flow extension activating...');
@@ -54,6 +59,17 @@ export async function activate(context: vscode.ExtensionContext) {
         complianceService, logger, context.extensionPath
     );
     scheduler = new TaskScheduler(taskStore, pipelineRunner, logger);
+    const api = new SubtitleFlowApiService(
+        taskStore,
+        scheduler,
+        pipelineRunner,
+        whisperService,
+        optimizeService,
+        translateService,
+        complianceService,
+        logger,
+        context.extensionPath
+    );
     logger.info('All services created.');
 
     // ── 3. 注册任务树视图 ──
@@ -63,14 +79,18 @@ export async function activate(context: vscode.ExtensionContext) {
         showCollapseAll: true,
     });
     scheduler.onDidChange(() => treeProvider.refresh());
+    api.onDidChangeTasks(() => treeProvider.refresh());
 
-    // ── 4. 注册命令入口 ──
-    registerCommands(context, { taskStore, scheduler, logger });
+    // ── 4. 注册命令与 Copilot 入口 ──
+    registerCommands(context, { api, logger });
+    registerSubtitleFlowTools(context, api);
+    registerSubtitleFlowParticipant(context, api);
 
     // ── 5. 注册需要释放的对象 ──
     context.subscriptions.push(treeView, treeProvider, taskStore, scheduler, logger);
 
     logger.info('Subtitle Flow extension activated successfully ✅');
+    return api;
 }
 
 export function deactivate() {

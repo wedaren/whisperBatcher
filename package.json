@@ -10,7 +10,17 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onChatParticipant:wedaren.whisper-subtitle-flow.agent",
+    "onLanguageModelTool:subtitleflow_list_tasks",
+    "onLanguageModelTool:subtitleflow_get_task",
+    "onLanguageModelTool:subtitleflow_enqueue_task",
+    "onLanguageModelTool:subtitleflow_run_pending",
+    "onLanguageModelTool:subtitleflow_pause_task",
+    "onLanguageModelTool:subtitleflow_resume_task",
+    "onLanguageModelTool:subtitleflow_retry_task",
+    "onLanguageModelTool:subtitleflow_delete_task"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "viewsContainers": {
@@ -33,6 +43,12 @@
       ]
     },
     "commands": [
+      {
+        "command": "subtitleFlow.agent",
+        "title": "Open Subtitle Flow Agent",
+        "category": "Subtitle Flow",
+        "icon": "$(comment-discussion)"
+      },
       {
         "command": "subtitleFlow.addVideos",
         "title": "Add Videos",
@@ -79,6 +95,11 @@
     "menus": {
       "view/title": [
         {
+          "command": "subtitleFlow.agent",
+          "when": "view == subtitleFlowTasks",
+          "group": "navigation@0"
+        },
+        {
           "command": "subtitleFlow.addVideos",
           "when": "view == subtitleFlowTasks",
           "group": "navigation@1"
@@ -122,6 +143,221 @@
         }
       ]
     },
+    "chatParticipants": [
+      {
+        "id": "wedaren.whisper-subtitle-flow.agent",
+        "name": "subtitleFlow",
+        "fullName": "Subtitle Flow Agent",
+        "description": "Manage subtitle background jobs for long-running Whisper and LLM workflows.",
+        "isSticky": true,
+        "commands": [
+          {
+            "name": "help",
+            "description": "Show subtitle agent usage"
+          },
+          {
+            "name": "list",
+            "description": "List subtitle tasks"
+          },
+          {
+            "name": "enqueue",
+            "description": "Create a queued subtitle task from a video path"
+          },
+          {
+            "name": "run",
+            "description": "Start the pending queue or create and start a task"
+          },
+          {
+            "name": "get",
+            "description": "Inspect one subtitle task"
+          },
+          {
+            "name": "pause",
+            "description": "Pause a running subtitle task"
+          },
+          {
+            "name": "resume",
+            "description": "Resume a paused subtitle task"
+          },
+          {
+            "name": "retry",
+            "description": "Retry a failed subtitle task"
+          },
+          {
+            "name": "delete",
+            "description": "Delete a subtitle task record"
+          }
+        ]
+      }
+    ],
+    "languageModelTools": [
+      {
+        "name": "subtitleflow_list_tasks",
+        "displayName": "List Subtitle Tasks",
+        "modelDescription": "List subtitle workflow tasks with status and outputs.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        },
+        "tags": [
+          "subtitle",
+          "tasks",
+          "read"
+        ]
+      },
+      {
+        "name": "subtitleflow_get_task",
+        "displayName": "Get Subtitle Task",
+        "modelDescription": "Get a subtitle task by task id.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "taskId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "taskId"
+          ]
+        },
+        "tags": [
+          "subtitle",
+          "tasks",
+          "read"
+        ]
+      },
+      {
+        "name": "subtitleflow_enqueue_task",
+        "displayName": "Enqueue Subtitle Task",
+        "modelDescription": "Create a queued subtitle generation task for an absolute video path.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "videoPath": {
+              "type": "string"
+            },
+            "whisperModel": {
+              "type": "string"
+            },
+            "whisperLanguage": {
+              "type": "string"
+            },
+            "targetLanguages": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "videoPath"
+          ]
+        },
+        "tags": [
+          "subtitle",
+          "tasks",
+          "write"
+        ]
+      },
+      {
+        "name": "subtitleflow_run_pending",
+        "displayName": "Run Pending Subtitle Tasks",
+        "modelDescription": "Ask the background scheduler to start queued subtitle tasks.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        },
+        "tags": [
+          "subtitle",
+          "tasks",
+          "write"
+        ]
+      },
+      {
+        "name": "subtitleflow_pause_task",
+        "displayName": "Pause Subtitle Task",
+        "modelDescription": "Pause a running subtitle task.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "taskId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "taskId"
+          ]
+        },
+        "tags": [
+          "subtitle",
+          "tasks",
+          "write"
+        ]
+      },
+      {
+        "name": "subtitleflow_resume_task",
+        "displayName": "Resume Subtitle Task",
+        "modelDescription": "Resume a paused subtitle task.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "taskId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "taskId"
+          ]
+        },
+        "tags": [
+          "subtitle",
+          "tasks",
+          "write"
+        ]
+      },
+      {
+        "name": "subtitleflow_retry_task",
+        "displayName": "Retry Subtitle Task",
+        "modelDescription": "Retry a failed subtitle task.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "taskId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "taskId"
+          ]
+        },
+        "tags": [
+          "subtitle",
+          "tasks",
+          "write"
+        ]
+      },
+      {
+        "name": "subtitleflow_delete_task",
+        "displayName": "Delete Subtitle Task",
+        "modelDescription": "Delete a subtitle task record but keep output files.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "taskId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "taskId"
+          ]
+        },
+        "tags": [
+          "subtitle",
+          "tasks",
+          "write"
+        ]
+      }
+    ],
     "configuration": {
       "title": "Subtitle Flow",
       "properties": {
@@ -195,13 +431,14 @@
     "watch:esbuild": "node esbuild.js --watch",
     "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
     "package": "npm run check-types && npm run lint && node esbuild.js --production",
-    "compile-tests": "tsc -p . --outDir out",
-    "watch-tests": "tsc -p . -w --outDir out",
-    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "compile-tests": "tsc -p tsconfig.test.json",
+    "watch-tests": "tsc -p tsconfig.test.json -w",
+    "pretest": "npm run compile && npm run compile-tests",
     "generate-issue-notes": "node scripts/generate_issue_notes.js --notes issue-notes/20260301-142215-305.md --scan tmp out archives",
     "check-types": "tsc --noEmit",
     "lint": "eslint src",
-    "test": "vscode-test"
+    "test": "npm run test:unit",
+    "test:unit": "NODE_PATH=./test/runtime/node_modules node --test out-test/test/**/*.test.js"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
