@@ -1,5 +1,6 @@
 /**
- * TaskStore: Manages task persistence in tasks.json
+ * 任务存储层。
+ * 所有任务最终都持久化到 `tasks.json`，由这一层负责读写和状态修正。
  */
 import * as vscode from 'vscode';
 import * as fs from 'fs';
@@ -13,6 +14,7 @@ export class TaskStore {
     public readonly onDidChange = this._onDidChange.event;
 
     async initialize(storageUri: vscode.Uri): Promise<void> {
+        // 全部任务数据都放在扩展的 global storage 目录下。
         await vscode.workspace.fs.createDirectory(storageUri);
         this.storePath = path.join(storageUri.fsPath, 'tasks.json');
         await this.load();
@@ -29,22 +31,25 @@ export class TaskStore {
                 }
             }
         } catch {
-            // If corrupted, start fresh
+            // 存储文件损坏时直接回退为空，避免阻塞扩展启动。
             this.tasks.clear();
         }
     }
 
     private save(): void {
+        // 每次保存后都广播变化事件，供视图层刷新。
         const records = Array.from(this.tasks.values());
         fs.writeFileSync(this.storePath, JSON.stringify(records, null, 2), 'utf-8');
         this._onDidChange.fire();
     }
 
     generateId(): string {
+        // 当前用时间戳加短随机串生成任务 ID，足够可读且冲突概率低。
         return `task_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
     }
 
     addTask(videoPath: string, config?: { whisperModel?: string; whisperLanguage?: string; targetLanguages?: string[] }): TaskRecord {
+        // 新任务统一从 queued 状态开始，实际运行由调度器负责。
         const record: TaskRecord = {
             id: this.generateId(),
             videoPath,
@@ -60,6 +65,7 @@ export class TaskStore {
     }
 
     updateTask(id: string, updates: Partial<Omit<TaskRecord, 'id'>>): TaskRecord | undefined {
+        // 所有更新都会刷新 updatedAt，方便排序与排查。
         const task = this.tasks.get(id);
         if (!task) { return undefined; }
         Object.assign(task, updates, { updatedAt: new Date().toISOString() });
@@ -83,8 +89,8 @@ export class TaskStore {
     }
 
     /**
-     * Remove tasks whose source video no longer exists on disk.
-     * Returns number of cleaned records.
+     * 清理源视频已经不存在的任务。
+     * 返回被清理的任务数量。
      */
     cleanStaleTasks(): number {
         let count = 0;
@@ -99,7 +105,8 @@ export class TaskStore {
     }
 
     /**
-     * Check if output files still exist on disk and update records accordingly.
+     * 校正输出文件状态。
+     * 如果用户在扩展外手动删除了产物文件，这里会同步把记录中的路径清掉。
      */
     refreshOutputStatus(): void {
         let changed = false;

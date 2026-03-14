@@ -1,10 +1,12 @@
 /**
- * Generic OpenAI-compatible LLM HTTP client.
+ * LLM 客户端。
+ * 当前实现不直接调用 HTTP，而是通过 VS Code LM API 选择并请求 Copilot 可用模型。
  */
 import * as vscode from 'vscode';
 import { LLM_MODEL_FAMILY, LLM_MAX_RETRIES, LLM_RETRY_BASE_DELAY_MS } from '../constants';
 
 function isTransientError(err: any): boolean {
+    // 这些错误更像瞬态问题，适合退避重试。
     const msg = (err.message || String(err)).toLowerCase();
     return msg.includes('no choices')
         || msg.includes('response contained no')
@@ -32,7 +34,7 @@ export class LLMClient {
         messages: LLMMessage[],
         options?: { temperature?: number; maxTokens?: number; signal?: AbortSignal }
     ): Promise<LLMResponse> {
-        // Find the family of GPT-4o models using the official VS Code LM API selector
+        // 通过 family 选择当前 VS Code / Copilot 可用的模型。
         const models = await vscode.lm.selectChatModels({ family: LLM_MODEL_FAMILY });
 
         if (models.length === 0) {
@@ -42,12 +44,10 @@ export class LLMClient {
             );
         }
 
-        // We will default to the first one available
+        // 当前策略直接使用第一个可用模型。
         const model = models[0];
 
-        // The VS Code LM API only supports Application, User and Assistant roles usually natively,
-        // but it accepts LanguageModelChatMessage.User and LanguageModelChatMessage.Assistant.
-        // We will concat system messages to the first user message.
+        // VS Code LM API 没有独立的 system role，这里把 system 提示拼接到首个 user 消息。
         let systemPrompt = '';
         const vscodeMessages: vscode.LanguageModelChatMessage[] = [];
 
@@ -60,7 +60,7 @@ export class LLMClient {
                         systemPrompt ? systemPrompt + msg.content : msg.content
                     )
                 );
-                systemPrompt = ''; // Consume the system prompt
+                systemPrompt = ''; // 这一段 system 提示已经消费完成
             } else if (msg.role === 'assistant') {
                 vscodeMessages.push(
                     vscode.LanguageModelChatMessage.Assistant(msg.content)
@@ -68,13 +68,14 @@ export class LLMClient {
             }
         }
 
-        // If the array only consisted of system messages, make sure we send at least one User message
+        // 如果只有 system 消息，补一个 user 消息，满足 LM API 输入要求。
         if (vscodeMessages.length === 0 && systemPrompt) {
             vscodeMessages.push(vscode.LanguageModelChatMessage.User(systemPrompt));
         }
 
         let token: vscode.CancellationToken | undefined;
         if (options?.signal) {
+            // 将标准 AbortSignal 转换为 VS Code 的取消令牌。
             const cts = new vscode.CancellationTokenSource();
             options.signal.addEventListener('abort', () => cts.cancel());
             if (options.signal.aborted) {
@@ -104,6 +105,7 @@ export class LLMClient {
                     throw new Error('Aborted');
                 }
                 if (attempt < LLM_MAX_RETRIES && isTransientError(err)) {
+                    // 对瞬态错误使用指数退避，避免立刻失败。
                     const backoff = LLM_RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
                     console.warn(`[LLMClient] Transient error (attempt ${attempt + 1}/${LLM_MAX_RETRIES}), retrying in ${backoff}ms: ${err.message || err}`);
                     await delay(backoff);
@@ -116,7 +118,7 @@ export class LLMClient {
             }
         }
 
-        // Should not reach here, but satisfy TypeScript
+        // 理论上不应执行到这里，仅用于满足 TypeScript 返回路径检查。
         throw new Error('LLM request failed after all retries');
     }
 }

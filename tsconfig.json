@@ -7,11 +7,11 @@
 		],
 		"sourceMap": true,
 		"rootDir": "src",
-		"strict": true, /* enable all strict type-checking options */
-		/* Additional Checks */
-		// "noImplicitReturns": true, /* Report error when not all code paths in function return a value. */
-		// "noFallthroughCasesInSwitch": true, /* Report errors for fallthrough cases in switch statement. */
-		// "noUnusedParameters": true,  /* Report errors on unused parameters. */
+		"strict": true, /* 启用严格类型检查，尽量在编译期暴露问题。 */
+		/* 可按需要逐步开启的附加检查项 */
+		// "noImplicitReturns": true, /* 检查并不是所有代码路径都返回值的情况。 */
+		// "noFallthroughCasesInSwitch": true, /* 检查 switch 分支意外贯穿。 */
+		// "noUnusedParameters": true,  /* 检查未使用参数。 */
 	},
 	"include": [
 		"src/**/*"

@@ -1,5 +1,8 @@
 /**
- * TaskTreeItem: TreeItem subclass for task nodes and output file nodes.
+ * 任务树节点。
+ * 同时承担两类展示职责：
+ * 1. 任务节点；
+ * 2. 输出文件节点。
  */
 import * as vscode from 'vscode';
 import * as path from 'path';
@@ -17,13 +20,13 @@ const STATUS_ICONS: Record<TaskPhase, vscode.ThemeIcon> = {
 };
 
 const STATUS_LABELS: Record<TaskPhase, string> = {
-    queued: '⏳ Queued',
-    transcribing: '🎙 Transcribing',
-    optimizing: '✨ Optimizing',
-    translating: '🌍 Translating',
-    completed: '✅ Completed',
-    failed: '❌ Failed',
-    paused: '⏸ Paused',
+    queued: '⏳ 排队中',
+    transcribing: '🎙 转录中',
+    optimizing: '✨ 优化中',
+    translating: '🌍 翻译中',
+    completed: '✅ 已完成',
+    failed: '❌ 已失败',
+    paused: '⏸ 已暂停',
 };
 
 export class TaskTreeItem extends vscode.TreeItem {
@@ -33,7 +36,7 @@ export class TaskTreeItem extends vscode.TreeItem {
         public readonly filePath?: string,
         public readonly fileLabel?: string
     ) {
-        // For output file nodes
+        // 输出文件节点：点击后打开文件，目录节点则在系统文件管理器中显示。
         if (isOutputFile && filePath) {
             super(fileLabel || path.basename(filePath), vscode.TreeItemCollapsibleState.None);
             try {
@@ -41,7 +44,7 @@ export class TaskTreeItem extends vscode.TreeItem {
                     this.iconPath = new vscode.ThemeIcon('folder');
                     this.command = {
                         command: 'revealFileInOS',
-                        title: 'Open Folder',
+                        title: '打开目录',
                         arguments: [vscode.Uri.file(filePath)],
                     };
                     this.resourceUri = vscode.Uri.file(filePath);
@@ -49,13 +52,13 @@ export class TaskTreeItem extends vscode.TreeItem {
                     return;
                 }
             } catch (e) {
-                // ignore and fallback to file behavior
+                // 出现异常时退回普通文件节点行为。
             }
 
             this.iconPath = new vscode.ThemeIcon('file');
             this.command = {
                 command: 'vscode.open',
-                title: 'Open Subtitle File',
+                title: '打开文件',
                 arguments: [vscode.Uri.file(filePath)],
             };
             this.contextValue = 'taskOutput';
@@ -63,7 +66,7 @@ export class TaskTreeItem extends vscode.TreeItem {
             return;
         }
 
-        // For task (video) nodes
+        // 任务节点：显示视频名和当前任务状态。
         const videoName = path.basename(task.videoPath, path.extname(task.videoPath));
         const statusLabel = STATUS_LABELS[task.status] || task.status;
         super(`${videoName} — ${statusLabel}`, vscode.TreeItemCollapsibleState.Collapsed);
@@ -72,7 +75,7 @@ export class TaskTreeItem extends vscode.TreeItem {
         this.contextValue = task.status === 'failed' ? 'taskFailed' : 'task';
         this.id = task.id;
 
-        // Tooltip
+        // Tooltip 用于快速展示任务元信息和错误摘要。
         const tooltipLines = [
             `Video: ${task.videoPath}`,
             `Status: ${statusLabel}`,

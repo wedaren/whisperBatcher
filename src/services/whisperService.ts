@@ -1,7 +1,6 @@
 /**
- * WhisperService: Invoke official openai-whisper Python CLI to transcribe video → raw SRT.
- *
- * openai-whisper accepts video files natively and handles its own model downloading.
+ * Whisper 转录服务。
+ * 负责调用本地 `openai-whisper` CLI，把视频文件转成原始 SRT。
  */
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
@@ -11,9 +10,10 @@ import { WHISPER_STDERR_LIMIT, WHISPER_STDOUT_LIMIT } from '../constants';
 
 export class WhisperService {
     /**
-     * Transcribe a video using official python whisper.
-     * Run: whisper <videoPath> --model <modelName> --output_dir <videoDir> --output_format srt --language auto
-     * Returns the absolute path to the generated *.raw.srt file.
+     * 使用官方 Python whisper CLI 转录视频。
+     * 典型命令形态：
+     * `whisper <videoPath> --model <modelName> --output_dir <dir> --output_format srt`
+     * 返回生成后的 `*.raw.srt` 绝对路径。
      */
     async transcribe(
         videoPath: string,
@@ -36,11 +36,11 @@ export class WhisperService {
 
         const rawSrtPath = path.join(outputDir, `${baseName}.${modelSafe}.raw.srt`);
 
-        // Python whisper outputs <basename>.srt in the output_dir
+        // whisper 默认输出 `<basename>.srt`，稍后会统一改名为 `*.raw.srt`。
         const whisperOutputPath = path.join(outputDir, `${baseName}.srt`);
 
         try {
-            log(`Starting official Whisper transcription using model: ${whisperModel}${whisperLanguage !== 'auto' ? ` (Language: ${whisperLanguage})` : ''}`);
+            log(`开始执行 Whisper 转录，模型=${whisperModel}${whisperLanguage !== 'auto' ? `，语言=${whisperLanguage}` : ''}`);
 
             const args = [
                 videoPath,
@@ -58,16 +58,15 @@ export class WhisperService {
                 args.push('--model_dir', modelPath);
             }
 
-            log(`Running: ${whisperBinary} ${args.join(' ')}`);
+            log(`执行命令：${whisperBinary} ${args.join(' ')}`);
             await this.runWhisper(whisperBinary, args, options?.signal);
 
-            // whisper outputs <video-basename>.srt, rename to *.raw.srt
+            // whisper 默认产出 `<basename>.srt`，这里统一改名成 `*.raw.srt`。
             if (fs.existsSync(whisperOutputPath)) {
                 fs.renameSync(whisperOutputPath, rawSrtPath);
-                log(`Whisper output renamed: ${path.basename(whisperOutputPath)} → ${path.basename(rawSrtPath)}`);
+                log(`Whisper 输出已重命名：${path.basename(whisperOutputPath)} → ${path.basename(rawSrtPath)}`);
             } else {
-                // If the file extension logic in whisper changed slightly, search for an srt
-                // If not found in outputDir, search there first, then fallback to videoDir
+                // 兼容 whisper 输出逻辑有轻微变化时的兜底搜索。
                 let candidates = fs.readdirSync(outputDir).filter(
                     (f) => f.startsWith(baseName) && f.endsWith('.srt') && f !== path.basename(rawSrtPath)
                 );
@@ -97,6 +96,7 @@ export class WhisperService {
                 return reject(new Error('Aborted'));
             }
 
+            // 通过子进程运行外部 CLI，stdout/stderr 用于失败时的诊断信息。
             const proc = cp.spawn(binary, args, {
                 stdio: ['ignore', 'pipe', 'pipe'],
             });
@@ -110,6 +110,7 @@ export class WhisperService {
                 if (code === 0) {
                     resolve();
                 } else {
+                    // 错误输出只保留尾部，避免日志过长。
                     const errTail = stderr.length > WHISPER_STDERR_LIMIT ? stderr.substring(stderr.length - WHISPER_STDERR_LIMIT) : stderr;
                     const outTail = stdout.length > WHISPER_STDOUT_LIMIT ? stdout.substring(stdout.length - WHISPER_STDOUT_LIMIT) : stdout;
                     reject(new Error(
@@ -128,6 +129,7 @@ export class WhisperService {
             });
 
             if (signal) {
+                // 外部中断时尽量优雅终止子进程。
                 signal.addEventListener('abort', () => {
                     proc.kill('SIGTERM');
                     reject(new Error('Aborted'));

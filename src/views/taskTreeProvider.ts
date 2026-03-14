@@ -1,5 +1,6 @@
 /**
- * TaskTreeDataProvider: Supplies TreeView data for the Subtitle Flow sidebar.
+ * 任务树数据提供器。
+ * 负责把 TaskStore 中的任务记录和产物文件映射成侧边栏树节点。
  */
 import * as vscode from 'vscode';
 import { TaskStore } from '../taskStore';
@@ -11,7 +12,7 @@ export class TaskTreeDataProvider implements vscode.TreeDataProvider<TaskTreeIte
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
     constructor(private taskStore: TaskStore) {
-        // Refresh tree when task store changes
+        // 任务存储变化时自动刷新树视图。
         taskStore.onDidChange(() => this.refresh());
     }
 
@@ -25,13 +26,13 @@ export class TaskTreeDataProvider implements vscode.TreeDataProvider<TaskTreeIte
 
     getChildren(element?: TaskTreeItem): TaskTreeItem[] {
         if (!element) {
-            // Root level: show all tasks sorted by updatedAt (newest first)
+            // 根节点层级：显示所有任务，按更新时间倒序。
             const tasks = this.taskStore.getAllTasks();
             tasks.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
             return tasks.map((task) => new TaskTreeItem(task));
         }
 
-        // Child level: show output files for a task
+        // 子节点层级：显示某个任务关联的输出文件。
         if (!element.isOutputFile && element.task) {
             return this.getOutputChildren(element.task);
         }
@@ -42,14 +43,12 @@ export class TaskTreeDataProvider implements vscode.TreeDataProvider<TaskTreeIte
     private getOutputChildren(task: TaskRecord): TaskTreeItem[] {
         const children: TaskTreeItem[] = [];
 
-        // (removed) combined Markdown task file; config and log are shown separately
-
-        // Outputs folder
+        // 输出目录
         if (task.outputs.folder) {
             children.push(new TaskTreeItem(task, true, task.outputs.folder, '📁 Outputs Folder'));
         }
 
-        // Final user-facing SRT
+        // 面向用户的最终字幕文件
         if (task.outputs.finalSrt) {
             children.push(new TaskTreeItem(task, true, task.outputs.finalSrt, '🎯 Final SRT'));
         }

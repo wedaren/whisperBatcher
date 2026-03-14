@@ -107,7 +107,7 @@ export class OptimizeService {
                     llmError: String(err),
                 });
                 log(`优化：块 ${i + 1}/${chunks.length} LLM 调用失败（${String(err)}），回退到原始文本。`);
-                // Fall back to sanitized originals instead of interrupting the pipeline
+                // 调用失败时回退到 sanitize 后原文，而不是中断整条流水线。
                 const { chunkStart, coreStart, coreEnd } = chunkObj;
                 for (let g = coreStart; g <= coreEnd; g++) {
                     const localIdx = g - chunkStart;

@@ -1,5 +1,11 @@
 /**
- * Extension entry point: wire all services and register commands.
+ * 扩展入口。
+ * 负责完成以下工作：
+ * 1. 创建日志器；
+ * 2. 初始化任务存储；
+ * 3. 装配所有核心服务；
+ * 4. 注册侧边栏视图与命令；
+ * 5. 在停用时回收资源。
  */
 import * as vscode from 'vscode';
 import { TaskStore } from './taskStore';
@@ -18,12 +24,12 @@ let scheduler: TaskScheduler | undefined;
 let logger: Logger | undefined;
 
 export async function activate(context: vscode.ExtensionContext) {
-    // ── 0. Create Logger (first, so everything can log) ──
+    // ── 0. 最先创建日志器，便于后续初始化过程全部可追踪 ──
     logger = new Logger();
     logger.info('Subtitle Flow extension activating...');
     logger.info(`Global storage path: ${context.globalStorageUri.fsPath}`);
 
-    // ── 1. Initialize Task Store ──
+    // ── 1. 初始化任务存储并恢复历史任务 ──
     const taskStore = new TaskStore();
     await taskStore.initialize(context.globalStorageUri);
     logger.info(`Task store initialized. ${taskStore.getAllTasks().length} existing task(s) loaded.`);
@@ -37,7 +43,7 @@ export async function activate(context: vscode.ExtensionContext) {
     }
     taskStore.refreshOutputStatus();
 
-    // ── 2. Create Services ──
+    // ── 2. 装配核心服务层 ──
     const whisperService = new WhisperService();
     const llmClient = new LLMClient();
     const complianceService = new ComplianceService();
@@ -50,7 +56,7 @@ export async function activate(context: vscode.ExtensionContext) {
     scheduler = new TaskScheduler(taskStore, pipelineRunner, logger);
     logger.info('All services created.');
 
-    // ── 3. Register TreeView ──
+    // ── 3. 注册任务树视图 ──
     const treeProvider = new TaskTreeDataProvider(taskStore);
     const treeView = vscode.window.createTreeView('subtitleFlowTasks', {
         treeDataProvider: treeProvider,
@@ -58,16 +64,17 @@ export async function activate(context: vscode.ExtensionContext) {
     });
     scheduler.onDidChange(() => treeProvider.refresh());
 
-    // ── 4. Register Commands ──
+    // ── 4. 注册命令入口 ──
     registerCommands(context, { taskStore, scheduler, logger });
 
-    // ── 5. Push disposables ──
+    // ── 5. 注册需要释放的对象 ──
     context.subscriptions.push(treeView, treeProvider, taskStore, scheduler, logger);
 
     logger.info('Subtitle Flow extension activated successfully ✅');
 }
 
 export function deactivate() {
+    // 停用时优先取消正在运行的后台任务，避免扩展退出后残留执行。
     if (scheduler) {
         scheduler.cancelAll();
     }

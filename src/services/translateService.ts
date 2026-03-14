@@ -1,5 +1,5 @@
 /**
- * TranslateService: LLM-based subtitle translation to multiple target languages.
+ * 翻译服务：基于 LLM 将优化后的字幕翻译成多个目标语言。
  *
  * 错误处理设计意图：TranslateService 在遇到错误时静默回退到 sanitized 原文。
  * 这是有意为之——单个坏块不应导致整个翻译丢失。对于翻译而言，
@@ -26,8 +26,8 @@ export class TranslateService {
     ) { }
 
     /**
-    * Translate optimized SRT into a single target language.
-    * Returns path to *.<lang>.srt.
+    * 将优化后的 SRT 翻译为单个目标语言。
+    * 返回生成后的 `*.<lang>.srt` 路径。
      */
     async translateToLanguage(
         llmSrtPath: string,
@@ -93,7 +93,7 @@ export class TranslateService {
             const chunkEntries = chunkObj.entries;
             const texts = extractTexts(chunkEntries);
 
-            // Compliance sanitize
+            // 合规替换：先将敏感词替换成占位符后再发给 LLM。
             const sanitizedTexts: string[] = [];
             const restoreMaps: SanitizeEntry[] = [];
             let chunkHits = 0; // 本块的合规命中计数
@@ -106,7 +106,7 @@ export class TranslateService {
                 chunkHits += hits;
             }
 
-            // Build translation prompt
+            // 构造带编号的翻译 prompt，确保输出可按行对应。
             const numberedLines = buildNumberedPrompt(sanitizedTexts);
             let rawResponse = '';
             try {
@@ -131,7 +131,7 @@ export class TranslateService {
                     llmError: String(err),
                 });
                 log(`Translate [${targetLang}]: 块 ${i + 1}/${chunks.length} LLM 调用失败（${String(err)}），回退到原始文本。`);
-                // Fall back to sanitized originals instead of interrupting the pipeline
+                // LLM 调用失败时回退到 sanitize 后原文，而不是中断整条翻译流程。
                 const { chunkStart, coreStart, coreEnd } = chunkObj;
                 for (let g = coreStart; g <= coreEnd; g++) {
                     const localIdx = g - chunkStart;
@@ -140,13 +140,13 @@ export class TranslateService {
                 continue;
             }
 
-            // Parse response
+            // 解析模型返回结果。
             let resultTexts = parseNumberedResponse(rawResponse, sanitizedTexts.length);
             log(
                 `Translate [${targetLang}]: 块 ${i + 1}/${chunks.length} 响应长度=${rawResponse.length} 字符，解析=${resultTexts.length}/${sanitizedTexts.length}`
             );
 
-            // Quality check: block count
+            // 质量检查：响应行数必须与输入行数一致。
             if (resultTexts.length !== sanitizedTexts.length) {
                 const rawLines = rawResponse
                     .split('\n')
@@ -213,7 +213,7 @@ export class TranslateService {
 
                     resultTexts = [...sanitizedTexts];
                 } else {
-                    // dump debug info and fall back to sanitized texts instead of throwing
+                    // 记录调试信息后回退，而不是让整个任务失败。
                     writeDebugDump(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_chunk${i + 1}_mismatch`, {
                         chunkIndex: i + 1,
                         chunkEntries: chunkEntries.map((e) => ({ index: e.index, startTime: e.startTime, endTime: e.endTime, text: e.text })),
@@ -229,13 +229,13 @@ export class TranslateService {
                 }
             }
 
-            // Similarity check: if translation ≈ input, likely untranslated
+            // 相似度检查：如果结果与输入过于相似，很可能没有真正翻译。
             if (!skipSimilarityCheck) {
                 const similarCount = resultTexts.filter(
                     (t, idx) => this.isSimilar(t, sanitizedTexts[idx])
                 ).length;
                 if (similarCount > sanitizedTexts.length * UNTRANSLATED_LINE_RATIO) {
-                    // write debug and fallback rather than throwing
+                    // 记录调试信息并回退，优先保证流水线可继续。
                     writeDebugDump(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_chunk${i + 1}_similar`, {
                         chunkIndex: i + 1,
                         chunkEntries: chunkEntries.map((e) => ({ index: e.index, startTime: e.startTime, endTime: e.endTime, text: e.text })),
@@ -251,7 +251,7 @@ export class TranslateService {
                 }
             }
 
-            // Compliance restore + leakage check
+            // 恢复占位符，并检查是否有占位符泄露。
             const restoredTexts = resultTexts.map((text, idx) => {
                 const mapEntry = restoreMaps.find((m) => m.idx === idx);
                 let restored = text;
@@ -259,7 +259,7 @@ export class TranslateService {
                     try {
                         restored = this.compliance.restore(text, mapEntry.map);
                     } catch (e) {
-                        // fallback to sanitized original on restore failure
+                        // 恢复失败时退回到 sanitize 原文。
                         writeDebugDump(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_chunk${i + 1}_restorefail`, {
                             chunkIndex: i + 1,
                             idx,
@@ -269,7 +269,7 @@ export class TranslateService {
                     }
                 }
                 if (this.compliance.detectLeakage(restored)) {
-                    // log and fallback rather than throwing
+                    // 发现泄露时回退而不是抛错。
                     writeDebugDump(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_chunk${i + 1}_leak`, {
                         chunkIndex: i + 1,
                         idx,
@@ -278,7 +278,7 @@ export class TranslateService {
                     restored = sanitizedTexts[idx];
                 }
 
-                // Post-translation compliance check (for target language rules)
+                // 翻译完成后再做一次合规检查，避免目标语言里重新出现敏感词。
                 const postSanitize = this.compliance.sanitize(restored);
                 if (postSanitize.hits > 0) {
                     totalHits += postSanitize.hits;
@@ -289,7 +289,7 @@ export class TranslateService {
                 return restored;
             });
 
-            // Prompt leak detection: replace leaked lines with sanitized fallback rather than throwing
+            // 提示词泄露检测：发现 prompt 内容混入输出时，替换为回退文本。
             for (let k = 0; k < restoredTexts.length; k++) {
                 const t = restoredTexts[k];
                 if (this.containsPromptLeak(t)) {
@@ -328,7 +328,7 @@ export class TranslateService {
     }
 
     /**
-     * Translate to all configured target languages.
+     * 翻译到所有目标语言。
      */
     async translateAll(
         llmSrtPath: string,
@@ -349,7 +349,7 @@ export class TranslateService {
     }
 
     /**
-     * Check if two strings are suspiciously similar (>90% character overlap).
+     * 判断两段文本是否可疑地过于相似。
      */
     private isSimilar(a: string, b: string): boolean {
         if (a === b) { return true; }

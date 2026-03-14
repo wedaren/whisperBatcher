@@ -1,5 +1,6 @@
 /**
- * ComplianceService unit tests
+ * ComplianceService 单元测试。
+ * 重点验证词表加载、敏感词替换、恢复和占位符泄露检测。
  */
 import * as fs from 'fs';
 import * as path from 'path';
@@ -20,6 +21,7 @@ describe('ComplianceService', () => {
     });
 
     function writeRules(rules: any[]): string {
+        // 测试里动态生成最小 YAML 词表，避免依赖外部资源文件。
         const rulesPath = path.join(tmpDir, 'rules.yaml');
         const escapeValue = (value: string) => value.replace(/"/g, '\\"');
         const yaml = `lexicon:\n${rules.map((r) =>
@@ -30,7 +32,7 @@ describe('ComplianceService', () => {
     }
 
     describe('loadRules', () => {
-        it('should load valid YAML rules', () => {
+        it('应该能加载合法的 YAML 规则', () => {
             const rulesPath = writeRules([
                 { pattern: 'badword', replacement: '***' },
                 { pattern: 'sensitive', replacement: '[REDACTED]' },
@@ -40,19 +42,19 @@ describe('ComplianceService', () => {
             expect(service.ruleCount).toBe(2);
         });
 
-        it('should run in passthrough mode when path is empty', () => {
+        it('当路径为空时应该进入直通模式', () => {
             service.loadRules('');
             expect(service.isLoaded).toBe(false);
         });
 
-        it('should run in passthrough mode when file does not exist', () => {
+        it('当文件不存在时应该进入直通模式', () => {
             service.loadRules('/nonexistent/rules.yaml');
             expect(service.isLoaded).toBe(false);
         });
     });
 
     describe('sanitize', () => {
-        it('should replace patterns with placeholders', () => {
+        it('应该把命中的敏感词替换为占位符', () => {
             const rulesPath = writeRules([
                 { pattern: 'badword', replacement: 'goodword' },
             ]);
@@ -65,7 +67,7 @@ describe('ComplianceService', () => {
             expect(result.restoreMap).toHaveLength(1);
         });
 
-        it('should handle multiple occurrences', () => {
+        it('应该能处理多次命中', () => {
             const rulesPath = writeRules([
                 { pattern: 'bad', replacement: 'good' },
             ]);
@@ -76,14 +78,14 @@ describe('ComplianceService', () => {
             expect(result.restoreMap).toHaveLength(2);
         });
 
-        it('should passthrough when no rules loaded', () => {
+        it('没有规则时应该直接透传原文', () => {
             service.loadRules('');
             const result = service.sanitize('anything here');
             expect(result.sanitized).toBe('anything here');
             expect(result.hits).toBe(0);
         });
 
-        it('should match english words by boundary and avoid substring false positives', () => {
+        it('应该按英文单词边界匹配，避免子串误伤', () => {
             const rulesPath = writeRules([
                 { pattern: 'ass', replacement: 'butt' },
             ]);
@@ -99,7 +101,7 @@ describe('ComplianceService', () => {
     });
 
     describe('restore', () => {
-        it('should restore placeholders to replacement text', () => {
+        it('应该能把占位符恢复为替换文本', () => {
             const rulesPath = writeRules([
                 { pattern: 'badword', replacement: 'goodword' },
             ]);
@@ -113,7 +115,7 @@ describe('ComplianceService', () => {
     });
 
     describe('detectLeakage', () => {
-        it('should detect residual compliance placeholders', () => {
+        it('应该能检测残留占位符', () => {
             expect(service.detectLeakage('some __COMPLIANCE_0__ text')).toBe(true);
             expect(service.detectLeakage('clean text')).toBe(false);
         });

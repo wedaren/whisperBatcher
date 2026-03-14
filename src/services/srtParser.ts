@@ -1,14 +1,15 @@
 /**
- * SRT subtitle parser & formatter
+ * SRT 基础处理工具。
+ * 负责解析、格式化、分块与文本提取，是优化和翻译流程的基础设施。
  */
 import { SrtEntry } from '../types';
 
 /**
- * Parse SRT subtitle text into structured entries.
+ * 将 SRT 字幕文本解析为结构化条目。
  */
 export function parseSrt(text: string): SrtEntry[] {
     const entries: SrtEntry[] = [];
-    // Normalize line endings
+    // 统一换行符，避免不同平台的换行格式影响解析。
     const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     const blocks = normalized.split(/\n\n+/).filter((b) => b.trim());
 
@@ -33,7 +34,7 @@ export function parseSrt(text: string): SrtEntry[] {
 }
 
 /**
- * Format SRT entries back into SRT text.
+ * 将结构化条目重新格式化回 SRT 文本。
  */
 export function formatSrt(entries: SrtEntry[]): string {
     return entries
@@ -45,8 +46,8 @@ export function formatSrt(entries: SrtEntry[]): string {
 }
 
 /**
- * Chunk SRT entries into groups for batch LLM processing.
- * Returns array of SrtEntry arrays, each with at most `chunkSize` entries.
+ * 将字幕条目切分成多个块，供 LLM 分批处理。
+ * overlap 用于保留相邻块上下文，coreStart/coreEnd 标记真正写回的核心区间。
  */
 export function chunkSrtEntries(
     entries: SrtEntry[],
@@ -83,15 +84,15 @@ export function chunkSrtEntries(
 }
 
 /**
- * Extract just the text content from SRT entries, preserving index mapping.
- * Used to send text-only content to LLM.
+ * 提取条目中的纯文本内容，并保留顺序映射。
+ * 常用于将字幕正文发送给 LLM。
  */
 export function extractTexts(entries: SrtEntry[]): string[] {
     return entries.map((e) => e.text);
 }
 
 /**
- * Merge new text content back into SRT entries (preserving timecodes).
+ * 将新文本合并回原字幕条目，同时保留时间轴。
  */
 export function mergeTexts(entries: SrtEntry[], texts: string[]): SrtEntry[] {
     if (entries.length !== texts.length) {

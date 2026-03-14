@@ -17,7 +17,7 @@ function usage() {
 }
 
 function isProbablyText(filePath) {
-  // 简单用扩展名判断文本文件
+    // 简单用扩展名判断文本文件
   const txtExt = ['.log', '.txt', '.md', '.srt', '.vtt', '.json', '.yaml', '.yml', '.csv', '.xml'];
   return txtExt.includes(path.extname(filePath).toLowerCase());
 }
@@ -33,6 +33,7 @@ async function sha256File(filePath) {
 }
 
 async function walk(dir, baseDir) {
+  // 递归遍历目录，返回相对路径和绝对路径的映射。
   let results = [];
   const entries = await fsp.readdir(dir, { withFileTypes: true });
   for (const ent of entries) {
@@ -48,6 +49,7 @@ async function walk(dir, baseDir) {
 }
 
 async function gatherFiles(dirs) {
+  // 按需扫描多个目录，统一汇总文件元数据。
   const cwd = process.cwd();
   let all = [];
   for (const d of dirs) {
@@ -76,6 +78,7 @@ async function gatherFiles(dirs) {
 }
 
 async function buildMarkdownSection(files, notesPath) {
+  // 根据扫描结果拼装 Markdown 片段，供追加到 notes 文件。
   const now = new Date().toISOString();
   let md = `\n### 自动生成的文件清单（扫描时间: ${now}）\n\n`;
   for (const f of files) {
@@ -95,6 +98,7 @@ async function buildMarkdownSection(files, notesPath) {
 }
 
 async function main() {
+  // 简单命令行参数解析，当前只支持 `--notes` 和 `--scan`。
   const argv = process.argv.slice(2);
   if (argv.length === 0) {
     usage();

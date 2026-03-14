@@ -1,5 +1,6 @@
 /**
- * VS Code mock for Jest tests
+ * Jest 测试环境下的最小 VS Code mock。
+ * 只实现当前测试用到的接口，避免依赖真实扩展宿主。
  */
 export const Uri = {
     file: (path: string) => ({ fsPath: path, scheme: 'file' }),

@@ -1,71 +1,62 @@
-# whisper-subtitle-flow README
+# Whisper Subtitle Flow
 
-This is the README for your extension "whisper-subtitle-flow". After writing up a brief description, we recommend including the following sections.
+一个用于批量生成字幕的 VS Code 扩展，核心流程是：
 
-## Features
+1. 使用 Whisper 对视频做转录
+2. 使用 VS Code LM / Copilot 模型优化字幕可读性
+3. 将优化后的字幕翻译成多个目标语言
 
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
+## 功能说明
 
-For example if there is an image subfolder under your extension project workspace:
+- 批量选择多个视频并创建任务
+- 按最大并发数自动调度任务
+- 在侧边栏查看任务状态和输出文件
+- 为每个任务生成配置文件和执行日志
+- 通过合规词表做敏感词替换与恢复
 
-\!\[feature X\]\(images/feature-x.png\)
+## 依赖要求
 
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
+- VS Code `1.109.0` 或更高版本
+- 可用的 GitHub Copilot / VS Code LM 模型
+- 已安装本地 `openai-whisper` CLI
 
-## Requirements
+## 配置项
 
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
+扩展提供以下关键配置：
 
-## Extension Settings
+- `subtitleFlow.maxConcurrency`
+  - 最大并发任务数
+- `subtitleFlow.targetLanguages`
+  - 默认目标语言列表
+- `subtitleFlow.whisperModel`
+  - 默认 Whisper 模型
+- `subtitleFlow.whisperBinary`
+  - whisper 可执行文件路径
+- `subtitleFlow.whisperModelPath`
+  - whisper 模型目录
+- `subtitleFlow.whisperLanguage`
+  - 默认源语言
+- `subtitleFlow.complianceRulesPath`
+  - 合规词表路径
+- `subtitleFlow.autoRun`
+  - 添加任务后是否自动执行
 
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
+## 文档
 
-For example:
+- 架构文档：[docs/architecture.md](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/docs/architecture.md)
+- 原理文档：[docs/principles.md](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/docs/principles.md)
 
-This extension contributes the following settings:
+## 当前状态
 
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
+当前代码已统一补充中文注释，包含：
 
-## Known Issues
+- 源码中的文件级说明
+- 核心方法与关键流程说明
+- 测试文件说明
+- 脚本说明
 
-Calling out known issues can help limit users opening duplicate issues against your extension.
+如果后续要继续细化，可以再补：
 
-## Release Notes
-
-Users appreciate release notes as you update your extension.
-
-### 1.0.0
-
-Initial release of ...
-
-### 1.0.1
-
-Fixed issue #.
-
-### 1.1.0
-
-Added features X, Y, and Z.
-
----
-
-## Following extension guidelines
-
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
-
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
-
-## Working with Markdown
-
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
-
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
-
-## For more information
-
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
-
-**Enjoy!**
+- 更详细的时序图
+- 常见故障排查手册
+- 产物目录示例

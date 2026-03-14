@@ -1,5 +1,6 @@
 /**
- * Logger: Provides both VS Code Output Channel logging and per-video file logging.
+ * 日志服务。
+ * 同时负责 VS Code Output Channel 日志和任务级文件日志。
  */
 import * as vscode from 'vscode';
 import * as fs from 'fs';
@@ -14,7 +15,8 @@ export class Logger {
     }
 
     /**
-     * Log to the VS Code Output Channel (always visible in Output panel).
+     * 写入 Output Channel。
+     * 这里的日志会始终出现在 VS Code 的 Output 面板中。
      */
     info(msg: string): void {
         const line = `[${new Date().toISOString()}] [INFO] ${msg}`;
@@ -32,13 +34,8 @@ export class Logger {
     }
 
     /**
-     * Create a log file alongside a video, write the initial entry,
-     * and also create a single Markdown task file containing YAML frontmatter
-     * (configuration) and a fenced `jsonl` code block for appendable logs.
-     * Returns the task file path.
-     */
-    /**
-     * Create separate config and log files for a task. Returns their paths.
+     * 为任务创建配置文件和日志文件。
+     * 这两个文件会和任务输出放在同一目录中，方便用户排查。
      */
     createTaskLog(videoPath: string, taskId: string, outputDir?: string): { configFilePath: string, logFilePath: string } {
         const videoDir = outputDir ?? path.dirname(videoPath);
@@ -51,7 +48,7 @@ export class Logger {
 
         const frontObj = { title: `Task: ${videoName}`, taskId, video: videoName, config: configToSave };
 
-        // Atomic write config file (JSON) (if not exists)
+        // 使用临时文件 + rename 的方式尽量保证写入原子性。
         if (!fs.existsSync(configFilePath)) {
             try {
                 const tmp = path.join(videoDir, `.tmp-${Date.now()}.json`);
@@ -65,7 +62,7 @@ export class Logger {
             this.info(`Task config exists: ${configFilePath}`);
         }
 
-        // Atomic write initial log entry (if not exists) — plain text lines
+        // 初始化日志文件，同样使用原子写入策略。
         if (!fs.existsSync(logFilePath)) {
             try {
                 const initialLogEntry = `[${new Date().toISOString()}] [INFO] Task created`;
@@ -84,8 +81,8 @@ export class Logger {
     }
 
     /**
-     * Create a log function that writes to both the per-video log file
-     * and the VS Code Output Channel.
+     * 创建任务级日志函数。
+     * 每次调用都会同时写入文件和 Output Channel。
      */
     createTaskLogFn(videoPath: string, taskId: string, outputDir?: string): (msg: string) => void {
         const videoDir = outputDir ?? path.dirname(videoPath);
@@ -96,6 +93,7 @@ export class Logger {
         const maxBytes = vscode.workspace.getConfiguration('subtitleFlow').get<number>('logMaxBytes', 5 * 1024 * 1024);
 
         const rotateIfNeeded = (filePath: string) => {
+            // 日志超出阈值时轮转，避免单个文件无限增长。
             try {
                 const st = fs.statSync(filePath);
                 if (st.size > maxBytes) {
@@ -107,11 +105,12 @@ export class Logger {
                     fs.renameSync(tmp, filePath);
                 }
             } catch (e) {
-                // ignore
+                // 日志轮转失败不影响主流程。
             }
         };
 
         const appendLogAtomic = (filePath: string, line: string) => {
+            // 先读旧文件再写临时文件，保证写入逻辑简单可控。
             try {
                 const toAppend = line + '\n';
                 const tmp = path.join(videoDir, `.tmp-${Date.now()}.log`);
@@ -128,7 +127,7 @@ export class Logger {
             const timestamp = new Date().toISOString();
             const line = `[${timestamp}] [INFO] ${msg}`;
 
-            // Ensure log file exists
+            // 如果日志文件不存在，先补建。
             if (!fs.existsSync(logFilePath)) {
                 try {
                     this.createTaskLog(videoPath, taskId, outputDir);
@@ -137,19 +136,19 @@ export class Logger {
                 }
             }
 
-            // Rotate if needed
+            // 写入前先检查是否需要轮转。
             rotateIfNeeded(logFilePath);
 
-            // Append atomically (plain text)
+            // 以纯文本方式追加日志。
             appendLogAtomic(logFilePath, line);
 
-            // Also write to Output Channel (short id)
+            // Output Channel 中附带短任务 ID，方便同时观察多个任务。
             this.outputChannel.appendLine(`[${shortId}] ${msg}`);
         };
     }
 
     /**
-     * Show the Output Channel to the user.
+     * 主动展示 Output Channel。
      */
     show(): void {
         this.outputChannel.show(true);

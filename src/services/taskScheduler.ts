@@ -1,5 +1,10 @@
 /**
- * TaskScheduler: Manages concurrency pool, pause/resume/retry.
+ * 任务调度器。
+ * 负责以下行为：
+ * 1. 并发控制；
+ * 2. 启动排队任务；
+ * 3. 暂停、恢复、重试任务；
+ * 4. 某个任务完成后继续调度下一个任务。
  */
 import * as vscode from 'vscode';
 import { TaskStore } from '../taskStore';
@@ -24,19 +29,18 @@ export class TaskScheduler {
     ) { }
 
     private get maxConcurrency(): number {
+        // 并发上限来自工作区配置，允许用户按机器性能调节。
         return vscode.workspace
             .getConfiguration('subtitleFlow')
             .get<number>('maxConcurrency', 2);
     }
 
     /**
-     * Start processing all queued tasks, respecting concurrency limit.
+     * 启动所有处于 queued 状态的任务，并遵守并发上限。
      */
     runPending(): void {
         const tasks = this.taskStore.getAllTasks();
         const queued = tasks.filter((t) => t.status === 'queued');
-
-        // (verbose) suppressed: queue/run counts
 
         for (const task of queued) {
             if (this.running.size >= this.maxConcurrency) {
@@ -47,18 +51,16 @@ export class TaskScheduler {
     }
 
     /**
-     * Enqueue and optionally auto-start a task.
-     * Uses setImmediate to ensure the task record is fully persisted before trying to run.
+     * 将任务放入待执行集合，并在 autoRun 打开时自动尝试启动。
+     * 这里延迟一个 tick 再调度，确保任务记录已经写盘。
      */
     enqueue(taskId: string): void {
         const autoRun = vscode.workspace
             .getConfiguration('subtitleFlow')
             .get<boolean>('autoRun', true);
 
-        // (verbose) enqueue called
-
         if (autoRun) {
-            // Defer to next tick so the task record is fully saved
+            // 延迟到下一轮事件循环，避免任务刚创建就被过早读取。
             setTimeout(() => {
                 this.runPending();
             }, 100);
@@ -66,7 +68,7 @@ export class TaskScheduler {
     }
 
     /**
-     * Start a single task in the background.
+     * 启动单个后台任务。
      */
     private startTask(taskId: string): void {
         if (this.running.has(taskId)) {
@@ -103,6 +105,7 @@ export class TaskScheduler {
     }
 
     private scheduleNext(): void {
+        // 当前有空闲并发槽位时，自动拉起下一个排队任务。
         if (this.running.size >= this.maxConcurrency) { return; }
 
         const tasks = this.taskStore.getAllTasks();
@@ -113,7 +116,7 @@ export class TaskScheduler {
     }
 
     /**
-     * Pause a running task.
+     * 暂停正在运行中的任务。
      */
     pause(taskId: string): void {
         const running = this.running.get(taskId);
@@ -127,7 +130,7 @@ export class TaskScheduler {
     }
 
     /**
-     * Resume a paused task.
+     * 恢复一个已暂停任务。
      */
     resume(taskId: string): void {
         const task = this.taskStore.getTask(taskId);
@@ -139,7 +142,7 @@ export class TaskScheduler {
     }
 
     /**
-     * Toggle pause/resume on a task.
+     * 在暂停和恢复之间切换。
      */
     pauseOrResume(taskId: string): void {
         const task = this.taskStore.getTask(taskId);
@@ -153,7 +156,7 @@ export class TaskScheduler {
     }
 
     /**
-     * Retry a failed task.
+     * 重试失败任务：清空错误信息并重新排队。
      */
     retry(taskId: string): void {
         const task = this.taskStore.getTask(taskId);
@@ -168,17 +171,18 @@ export class TaskScheduler {
     }
 
     /**
-     * Check if a task is currently running.
+     * 判断任务当前是否处于运行中。
      */
     isRunning(taskId: string): boolean {
         return this.running.has(taskId);
     }
 
     /**
-     * Cancel all running tasks (used on deactivate).
+     * 取消全部运行中的任务。
+     * 扩展停用时会调用这一方法。
      */
     cancelAll(): void {
-        // cancelling all running tasks
+        // 逐个触发 abort，让下层服务尽快退出。
         for (const [, running] of this.running) {
             running.abortController.abort();
         }

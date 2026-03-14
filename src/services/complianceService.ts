@@ -1,5 +1,6 @@
 /**
- * Compliance Service: YAML-based lexicon sanitization & restoration.
+ * 合规服务。
+ * 负责加载 YAML 词表，并在 LLM 处理前后执行敏感词替换与恢复。
  */
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
@@ -10,8 +11,8 @@ export class ComplianceService {
     private loaded = false;
 
     /**
-     * Load rules from YAML file path. If path is empty or doesn't exist,
-     * runs in passthrough mode.
+     * 从 YAML 文件加载规则。
+     * 路径为空或文件不存在时进入直通模式。
      */
     loadRules(rulesPath: string): void {
         this.rules = [];
@@ -28,7 +29,7 @@ export class ComplianceService {
             if (parsed && typeof parsed.lexicon === 'object') {
                 const newRules: ComplianceRule[] = [];
                 for (const [pattern, translations] of Object.entries(parsed.lexicon)) {
-                    // Use a safe fallback like the first configured translation, or just asterisks
+                    // 如果配置了多语言替换，当前简单取第一个值作为安全替换结果。
                     let safeReplacement = '***';
                     if (translations) {
                         const vals = Object.values(translations);
@@ -45,7 +46,7 @@ export class ComplianceService {
                 }
             }
         } catch {
-            // Invalid YAML — passthrough mode
+            // YAML 解析失败时不阻塞主流程，保持直通模式。
         }
     }
 
@@ -58,8 +59,8 @@ export class ComplianceService {
     }
 
     /**
-     * Replace sensitive terms with unique placeholders.
-     * Returns sanitized text and a restore map.
+     * 将敏感词替换成唯一占位符。
+     * 返回替换后的文本、恢复映射和命中次数。
      */
     sanitize(text: string): { sanitized: string; restoreMap: RestoreMap[]; hits: number } {
         if (!this.loaded || this.rules.length === 0) {
@@ -86,7 +87,7 @@ export class ComplianceService {
                     placeholder +
                     sanitized.substring(match.index + match[0].length);
                 hits++;
-                // Reset regex lastIndex because string length changed
+                // 字符串长度改变后必须重置 lastIndex，否则后续匹配位置会错乱。
                 regex.lastIndex = match.index + placeholder.length;
             }
         }
@@ -95,7 +96,7 @@ export class ComplianceService {
     }
 
     /**
-     * Restore placeholders back to their final replacement text.
+     * 把占位符恢复成最终替换文本。
      */
     restore(text: string, restoreMap: RestoreMap[]): string {
         let result = text;
@@ -106,7 +107,7 @@ export class ComplianceService {
     }
 
     /**
-     * Check for residual placeholders that were not properly restored.
+     * 检查最终文本中是否仍残留占位符。
      */
     detectLeakage(text: string): boolean {
         return /__COMPLIANCE_\d+__/.test(text);

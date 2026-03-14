@@ -1,6 +1,7 @@
 /**
- * Command handlers for Subtitle Flow extension.
- * Extracted from extension.ts to keep activate() focused on wiring.
+ * VS Code 命令处理层。
+ * 这一层主要负责和用户交互：采集输入、触发任务、展示提示信息。
+ * 真正的任务状态修改和执行编排分别交给 TaskStore、TaskScheduler 和 PipelineRunner。
  */
 import * as vscode from 'vscode';
 import * as path from 'path';
@@ -16,13 +17,20 @@ export interface CommandDependencies {
     logger: Logger;
 }
 
+/**
+ * 注册扩展提供的全部命令。
+ * 当前命令分为三类：
+ * 1. 创建与启动任务；
+ * 2. 控制已有任务；
+ * 3. 清理与辅助操作。
+ */
 export function registerCommands(
     context: vscode.ExtensionContext,
     deps: CommandDependencies
 ): void {
     const { taskStore, scheduler, logger } = deps;
 
-    // Add Videos
+    // 添加视频并创建批量任务
     context.subscriptions.push(
         vscode.commands.registerCommand('subtitleFlow.addVideos', async () => {
             logger.info('Command: addVideos triggered');
@@ -45,7 +53,7 @@ export function registerCommands(
 
             logger.info(`addVideos: user selected ${uris.length} file(s)`);
 
-            // Prompt for Whisper Model
+            // 为当前批次临时选择 Whisper 模型
             const globalModel = vscode.workspace.getConfiguration('subtitleFlow').get<string>('whisperModel', 'tiny');
             const modelLabel = await vscode.window.showQuickPick(
                 [
@@ -64,7 +72,7 @@ export function registerCommands(
                 return;
             }
 
-            // Prompt for Whisper Source Language
+            // 为当前批次临时选择源语言
             const globalSourceLang = vscode.workspace.getConfiguration('subtitleFlow').get<string>('whisperLanguage', 'auto');
             const sourceLangLabel = await vscode.window.showQuickPick(
                 [
@@ -87,7 +95,7 @@ export function registerCommands(
                 return;
             }
 
-            // Prompt for Target Languages
+            // 为当前批次临时输入目标语言列表
             const globalLangs = vscode.workspace.getConfiguration('subtitleFlow').get<string[]>('targetLanguages', ['zh-CN', 'en', 'ja']);
             const langsString = await vscode.window.showInputBox(
                 {
@@ -144,7 +152,7 @@ export function registerCommands(
         })
     );
 
-    // Run Pending Tasks
+    // 手动触发所有待执行任务
     context.subscriptions.push(
         vscode.commands.registerCommand('subtitleFlow.runPending', () => {
             logger.info('Command: runPending triggered');
@@ -153,7 +161,7 @@ export function registerCommands(
         })
     );
 
-    // Pause / Resume Task
+    // 暂停或恢复单个任务
     context.subscriptions.push(
         vscode.commands.registerCommand('subtitleFlow.pauseResumeTask', (item?: TaskTreeItem) => {
             if (item && item.task) {
@@ -163,7 +171,7 @@ export function registerCommands(
         })
     );
 
-    // Retry Failed Task
+    // 重试失败任务
     context.subscriptions.push(
         vscode.commands.registerCommand('subtitleFlow.retryTask', (item?: TaskTreeItem) => {
             if (item && item.task) {
@@ -173,7 +181,7 @@ export function registerCommands(
         })
     );
 
-    // Reveal in OS
+    // 在系统文件管理器中显示文件或目录
     context.subscriptions.push(
         vscode.commands.registerCommand('subtitleFlow.revealInOS', (item?: TaskTreeItem) => {
             if (!item) { return; }
@@ -185,7 +193,7 @@ export function registerCommands(
         })
     );
 
-    // Clear Stale Tasks
+    // 清理源文件已不存在的陈旧任务
     context.subscriptions.push(
         vscode.commands.registerCommand('subtitleFlow.clearStaleTasks', () => {
             logger.info('Command: clearStaleTasks triggered');
@@ -197,7 +205,7 @@ export function registerCommands(
         })
     );
 
-    // Delete Task
+    // 删除任务记录，但不删除输出文件
     context.subscriptions.push(
         vscode.commands.registerCommand('subtitleFlow.deleteTask', async (item?: TaskTreeItem) => {
             if (item && item.task) {

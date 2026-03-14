@@ -1,5 +1,6 @@
 /**
- * Core type definitions for Whisper Subtitle Flow
+ * 核心类型定义。
+ * 被任务存储、调度器、视图层和服务层共同使用。
  */
 
 export type TaskPhase =
@@ -12,28 +13,30 @@ export type TaskPhase =
     | 'paused';
 
 export interface TaskOutputs {
-    /** Absolute path to *.raw.srt */
+    /** `*.raw.srt` 的绝对路径。 */
     raw?: string;
-    /** Absolute path to *.llm.srt */
+    /** `*.llm.srt` 的绝对路径。 */
     llm?: string;
-    /** Absolute path to the task log file */
+    /** 任务日志文件的绝对路径。 */
     log?: string;
-    /** Absolute path to the task config file */
+    /** 任务配置文件的绝对路径。 */
     config?: string;
-    /** Absolute path to task output folder (e.g. <basename>.subtitle) */
+    /** 任务输出目录绝对路径，例如 `<basename>.subtitle`。 */
     folder?: string;
-    /** Absolute path to the final SRT meant for users (e.g. <basename>.<lang>.srt) */
+    /** 面向用户的最终字幕文件绝对路径。 */
     finalSrt?: string;
-    /** lang code → absolute path to *.<lang>.srt */
+    /** 语言代码到翻译结果文件路径的映射。 */
     translated: Record<string, string>;
 }
 
+/** 任务级配置覆写项。 */
 export interface TaskConfig {
     whisperModel?: string;
     whisperLanguage?: string;
     targetLanguages?: string[];
 }
 
+/** 持久化在 `tasks.json` 中的任务记录。 */
 export interface TaskRecord {
     id: string;
     videoPath: string;
@@ -46,6 +49,7 @@ export interface TaskRecord {
     complianceHits?: number;
 }
 
+/** 单条字幕条目。 */
 export interface SrtEntry {
     index: number;
     startTime: string;
@@ -53,15 +57,18 @@ export interface SrtEntry {
     text: string;
 }
 
+/** 单条合规替换规则。 */
 export interface ComplianceRule {
     pattern: string;
     replacement: string;
 }
 
+/** 合规 YAML 的顶层结构。 */
 export interface ComplianceLexicon {
     lexicon: Record<string, Record<string, string>>;
 }
 
+/** 占位符恢复映射。 */
 export interface RestoreMap {
     placeholder: string;
     original: string;

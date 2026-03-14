@@ -25,8 +25,12 @@ export class PipelineRunner {
     ) { }
 
     /**
-     * Run the full pipeline for a task. Updates TaskStore at each phase.
-     * Returns when completed or throws on failure.
+     * 执行一个任务的完整流水线。
+     * 这条链路是本扩展的核心主流程：
+     * 1. 转录；
+     * 2. 优化；
+     * 3. 翻译。
+     * 每一步都会把状态和产物写回 TaskStore。
      */
     async run(
         taskId: string,
@@ -73,12 +77,12 @@ export class PipelineRunner {
         }
 
         try {
-            // Phase 1: Transcribe
+            // 阶段 1：转录。优先复用已有输出，避免重复计算。
             const modelSafe = taskModel.replace(/[^a-zA-Z0-9_-]/g, '_');
             const rawSrtPath = path.join(taskOutputDir, `${baseName}.${modelSafe}.raw.srt`);
             let finalRawSrtPath = rawSrtPath;
 
-            // 也检查旧位置 (videoDir)
+            // 同时兼容历史版本曾写到视频同级目录的旧文件。
             const legacyRaw = path.join(videoDir, `${baseName}.${modelSafe}.raw.srt`);
 
             if (fs.existsSync(rawSrtPath)) {
@@ -87,7 +91,7 @@ export class PipelineRunner {
                     outputs: { ...task.outputs, raw: rawSrtPath, folder: taskOutputDir },
                 });
             } else if (fs.existsSync(legacyRaw)) {
-                // 将旧文件移动到输出目录
+                // 如果发现旧路径文件，优先迁移到新的输出目录结构。
                 try {
                     fs.renameSync(legacyRaw, rawSrtPath);
                     logFn(`阶段 1/3：将旧版原始字幕移动到输出目录 → ${path.basename(rawSrtPath)}`);
@@ -111,7 +115,7 @@ export class PipelineRunner {
                 logFn(`阶段 1/3：转录完成 → ${path.basename(finalRawSrtPath)}`);
             }
 
-            // Phase 2: Optimize
+            // 阶段 2：优化。逻辑与转录阶段一致，也会先尝试复用旧产物。
             const llmSrtPath = path.join(taskOutputDir, `${baseName}.llm.srt`);
             let finalLlmSrtPath = llmSrtPath;
             let currentTask = this.taskStore.getTask(taskId)!;
@@ -150,16 +154,14 @@ export class PipelineRunner {
                 logFn(`阶段 2/3：优化完成 → ${path.basename(finalLlmSrtPath)}（合规命中 ${optimizeResult.complianceHits} 次）`);
             }
 
-            // Phase 3: Translate
+            // 阶段 3：翻译。翻译结果写回视频目录，便于用户直接取用。
             this.taskStore.updateTask(taskId, {
                 status: 'translating',
                 currentPhase: 'translating',
             });
             logFn(`阶段 3/3：开始翻译到 [${targetLanguages.join(', ')}]...`);
 
-            // 将最终翻译的 SRT 写到视频同级目录 (videoDir)
-            // 为确保翻译阶段使用与优化阶段一致的分块参数，显式传入与 OptimizeService 默认相同的
-            // chunkSize/overlap（50/5）。如果未来需要使其可配置，可从 extension config 或 task config 中读取。
+            // 显式传入与优化阶段一致的分块参数，降低边界不一致风险。
             const translateResult = await this.translate.translateAll(
                 finalLlmSrtPath,
                 targetLanguages,
@@ -167,17 +169,17 @@ export class PipelineRunner {
             );
 
             const updatedTask = this.taskStore.getTask(taskId)!;
-            // pick primary finalSrt as first target language result if available
+            // 最终主输出优先取第一个目标语言的翻译结果。
             const primaryLang = targetLanguages[0];
             const primaryFinal = translateResult.paths[primaryLang] ?? Object.values(translateResult.paths)[0] ?? '';
 
-            // 将 LLM 优化后的 SRT 复制到视频同级，作为 <basename>.srt
-            // （替换之前复制翻译结果的行为）
+            // 当前主流程将优化后的 LLM 字幕复制为 `<basename>.srt`，
+            // 作为最容易被播放器或用户直接识别的默认字幕文件。
             let primaryCopyPath = '';
             try {
                 if (finalLlmSrtPath && fs.existsSync(finalLlmSrtPath)) {
                     primaryCopyPath = path.join(videoDir, `${baseName}.srt`);
-                    // overwrite if exists
+                    // 若同名文件已存在，则覆盖为最新结果。
                     fs.copyFileSync(finalLlmSrtPath, primaryCopyPath);
                     logFn(`已将 LLM 优化字幕复制到视频同级：${path.basename(primaryCopyPath)}`);
                 }
@@ -203,6 +205,7 @@ export class PipelineRunner {
             logFn(`阶段 3/3：翻译完成 → ${translatedFiles} （合规命中 ${translateResult.totalComplianceHits} 次）`);
             logFn('✅ 所有阶段已成功完成。');
         } catch (err: any) {
+            // 统一把异常映射成 paused 或 failed 状态，保证 UI 与持久化状态一致。
             if (signal.aborted) {
                 this.taskStore.updateTask(taskId, {
                     status: 'paused',
