@@ -18,11 +18,13 @@ import {
 import { SrtEntry } from '../types';
 import { TRANSLATE_CHUNK_SIZE, TRANSLATE_OVERLAP, SIMILARITY_THRESHOLD, UNTRANSLATED_LINE_RATIO, ENGLISH_DETECTION_RATIO, LANG_NAMES } from '../constants';
 import { parseNumberedResponse, isRefusal, writeDebugDump, buildNumberedPrompt, SanitizeEntry } from './llmUtils';
+import { LlmRecoveryAgent, type PromptVariant, type RecoveryFailureKind } from './llmRecoveryAgent';
 
 export class TranslateService {
     constructor(
         private llmClient: LLMClient,
-        private compliance: ComplianceService
+        private compliance: ComplianceService,
+        private recoveryAgent: LlmRecoveryAgent = new LlmRecoveryAgent()
     ) { }
 
     /**
@@ -106,149 +108,97 @@ export class TranslateService {
                 chunkHits += hits;
             }
 
-            // 构造带编号的翻译 prompt，确保输出可按行对应。
-            const numberedLines = buildNumberedPrompt(sanitizedTexts);
+            let resultTexts = [...sanitizedTexts];
             let rawResponse = '';
-            try {
-                const response = await this.llmClient.chat([
-                {
-                    role: 'system',
-                    content:
-                        `You are a professional subtitle translator. Translate the following subtitle lines to ${langName}. ` +
-                        'Output ONLY the translated lines, one per line, prefixed with their number like [1], [2], etc. ' +
-                        'Keep the exact same number of lines. Preserve any placeholders (like __COMPLIANCE_N__) as-is. ' +
-                        'Do not add explanations or notes.',
-                },
-                { role: 'user', content: numberedLines },
-                ], { signal: options?.signal });
-                rawResponse = response.content || '';
-            } catch (err) {
-                writeDebugDump(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_chunk${i + 1}`, {
-                    chunkIndex: i + 1,
-                    chunkEntries: chunkEntries.map((e) => ({ index: e.index, startTime: e.startTime, endTime: e.endTime, text: e.text })),
-                    sanitizedTexts: sanitizedTexts,
-                    numberedPrompt: numberedLines,
-                    llmError: String(err),
-                });
-                log(`Translate [${targetLang}]: 块 ${i + 1}/${chunks.length} LLM 调用失败（${String(err)}），回退到原始文本。`);
-                // LLM 调用失败时回退到 sanitize 后原文，而不是中断整条翻译流程。
-                const { chunkStart, coreStart, coreEnd } = chunkObj;
-                for (let g = coreStart; g <= coreEnd; g++) {
-                    const localIdx = g - chunkStart;
-                    translatedTexts[g] = sanitizedTexts[localIdx];
-                }
-                continue;
-            }
+            let currentChunkSize = sanitizedTexts.length;
+            let promptVariant: PromptVariant = 'standard';
+            const failures: RecoveryFailureKind[] = [];
 
-            // 解析模型返回结果。
-            let resultTexts = parseNumberedResponse(rawResponse, sanitizedTexts.length);
-            log(
-                `Translate [${targetLang}]: 块 ${i + 1}/${chunks.length} 响应长度=${rawResponse.length} 字符，解析=${resultTexts.length}/${sanitizedTexts.length}`
-            );
-
-            // 质量检查：响应行数必须与输入行数一致。
-            if (resultTexts.length !== sanitizedTexts.length) {
-                const rawLines = rawResponse
-                    .split('\n')
-                    .map((line) => line.trim())
-                    .filter((line) => line.length > 0)
-                    .slice(0, 8)
-                    .map((line, idx) => `[${idx + 1}] ${line}`)
-                    .join(' | ');
-                log(
-                    `Translate [${targetLang}]: 块 ${i + 1}/${chunks.length} 解析失败；响应前几行=${rawLines || '(空)'}`
-                );
-
-                if (isRefusal(rawResponse)) {
-                    log(`Translate [${targetLang}]: 块 ${i + 1}/${chunks.length} 被 LLM 拒绝（安全策略），回退到原始文本。`);
-
-                    // 将触发安全策略拒绝的 prompt 写到与翻译输出同目录，方便排查
-                    try {
-                        const outDir = options?.outputDir ?? path.dirname(llmSrtPath);
-                        const baseName = path.basename(llmSrtPath).replace(/\.llm\.srt$/i, '');
-                        const ts = new Date().toISOString().replace(/[:.]/g, '-');
-                        const promptFile = path.join(outDir, `${baseName}.${targetLang}.llm-refused-prompt.chunk${i + 1}.${ts}.txt`);
-                        fs.writeFileSync(promptFile, numberedLines, 'utf-8');
-                        log(`已写入被拒绝的 LLM prompt：${promptFile}`);
-                    } catch (e) {
-                        try { log(`写入被拒绝 prompt 失败：${String(e)}`); } catch { /* ignore */ }
-                    }
-
-                    // 发起额外的 LLM 请求，分析哪些词会被安全审查，并把返回写到文件
-                    try {
-                        const outDir = options?.outputDir ?? path.dirname(llmSrtPath);
-                        const ts = new Date().toISOString().replace(/[:.]/g, '-');
-                        const analysisPrompt = '分析哪个词会被安全审查：\n' +
-                            sanitizedTexts.map((t, idx) => `[${idx + 1}] ${t}`).join('\n');
-
-                        const analysisResponse = await this.llmClient.chat([
-                            { role: 'system', content: '你是安全审查分析助手。请列出输入文本中可能触发安全审查的词或短语，按行对应编号返回。' },
-                            { role: 'user', content: analysisPrompt },
-                        ], { signal: options?.signal });
-
-                        try {
-                            const baseName = path.basename(llmSrtPath).replace(/\.llm\.srt$/i, '');
-                            const analysisFile = path.join(outDir, `${baseName}.${targetLang}.llm-refused-analysis.chunk${i + 1}.${ts}.txt`);
-                            fs.writeFileSync(analysisFile, analysisResponse.content || '', 'utf-8');
-                            log(`已写入被拒绝 LLM 分析：${analysisFile}`);
-                        } catch (e) {
-                            try { log(`写入被拒绝分析文件失败：${String(e)}`); } catch { /* ignore */ }
-                        }
-
-                        // 同时写入集中调试目录 (.subtitle/llm-debug)
-                        try {
-                            writeDebugDump(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_refused_analysis_chunk${i + 1}`, {
-                                chunkIndex: i + 1,
-                                chunkEntries: chunkEntries.map((e) => ({ index: e.index, startTime: e.startTime, endTime: e.endTime, text: e.text })),
-                                sanitizedTexts: sanitizedTexts,
-                                numberedPrompt: analysisPrompt,
-                                rawResponse: analysisResponse.content || '',
-                            });
-                        } catch (e) {
-                            try { log(`写入 .subtitle/llm-debug 失败：${String(e)}`); } catch { /* ignore */ }
-                        }
-                    } catch (e) {
-                        try { log(`LLM 被拒绝分析请求失败：${String(e)}`); } catch { /* ignore */ }
-                    }
-
-                    resultTexts = [...sanitizedTexts];
-                } else {
-                    // 记录调试信息后回退，而不是让整个任务失败。
-                    writeDebugDump(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_chunk${i + 1}_mismatch`, {
+            for (let attempt = 0; ; attempt++) {
+                const numberedLines = buildNumberedPrompt(sanitizedTexts);
+                try {
+                    const response = await this.llmClient.chat([
+                        {
+                            role: 'system',
+                            content: this.buildTranslateSystemPrompt(langName, promptVariant),
+                        },
+                        { role: 'user', content: numberedLines },
+                    ], { signal: options?.signal });
+                    rawResponse = response.content || '';
+                } catch (err) {
+                    const failure = 'call_error' as const;
+                    failures.push(failure);
+                    writeDebugDump(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_chunk${i + 1}`, {
                         chunkIndex: i + 1,
                         chunkEntries: chunkEntries.map((e) => ({ index: e.index, startTime: e.startTime, endTime: e.endTime, text: e.text })),
-                        sanitizedTexts: sanitizedTexts,
+                        sanitizedTexts,
+                        numberedPrompt: numberedLines,
+                        llmError: String(err),
+                        promptVariant,
+                        attempt,
+                    });
+                    const decision = this.recoveryAgent.decide('translate', { attempt, chunkSize: currentChunkSize, promptVariant, failures }, failure);
+                    log(`Translate [${targetLang}]: 块 ${i + 1}/${chunks.length} LLM 调用失败，恢复策略=${decision.reason}`);
+                    if (!decision.shouldRetry) {
+                        break;
+                    }
+                    promptVariant = decision.nextPromptVariant;
+                    currentChunkSize = decision.nextChunkSize;
+                    continue;
+                }
+
+                resultTexts = parseNumberedResponse(rawResponse, sanitizedTexts.length);
+                log(`Translate [${targetLang}]: 块 ${i + 1}/${chunks.length} 尝试 ${attempt + 1}，响应长度=${rawResponse.length} 字符，解析=${resultTexts.length}/${sanitizedTexts.length}，prompt=${promptVariant}`);
+
+                let failure: RecoveryFailureKind | undefined;
+                if (resultTexts.length !== sanitizedTexts.length) {
+                    failure = isRefusal(rawResponse) ? 'refusal' : 'parse_mismatch';
+                } else if (!skipSimilarityCheck) {
+                    const similarCount = resultTexts.filter((t, idx) => this.isSimilar(t, sanitizedTexts[idx])).length;
+                    if (similarCount > sanitizedTexts.length * UNTRANSLATED_LINE_RATIO) {
+                        failure = 'untranslated';
+                        writeDebugDump(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_chunk${i + 1}_similar`, {
+                            chunkIndex: i + 1,
+                            chunkEntries: chunkEntries.map((e) => ({ index: e.index, startTime: e.startTime, endTime: e.endTime, text: e.text })),
+                            sanitizedTexts,
+                            numberedPrompt: numberedLines,
+                            rawResponse,
+                            similarCount,
+                            total: sanitizedTexts.length,
+                            promptVariant,
+                            attempt,
+                        });
+                    }
+                }
+
+                if (!failure) {
+                    break;
+                }
+
+                failures.push(failure);
+                if (failure === 'refusal') {
+                    await this.writeRefusalAnalysis(llmSrtPath, targetLang, i + 1, chunkEntries, sanitizedTexts, numberedLines, options);
+                } else {
+                    writeDebugDump(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_chunk${i + 1}_${failure}`, {
+                        chunkIndex: i + 1,
+                        chunkEntries: chunkEntries.map((e) => ({ index: e.index, startTime: e.startTime, endTime: e.endTime, text: e.text })),
+                        sanitizedTexts,
                         numberedPrompt: numberedLines,
                         rawResponse,
                         parsedCount: resultTexts.length,
                         expectedCount: sanitizedTexts.length,
+                        promptVariant,
+                        attempt,
                     });
-
-                    log(`Translate [${targetLang}]: 块 ${i + 1}/${chunks.length} 解析不匹配；为避免中断流水线，回退到已 sanitize 的原文。`);
-                    resultTexts = [...sanitizedTexts];
                 }
-            }
-
-            // 相似度检查：如果结果与输入过于相似，很可能没有真正翻译。
-            if (!skipSimilarityCheck) {
-                const similarCount = resultTexts.filter(
-                    (t, idx) => this.isSimilar(t, sanitizedTexts[idx])
-                ).length;
-                if (similarCount > sanitizedTexts.length * UNTRANSLATED_LINE_RATIO) {
-                    // 记录调试信息并回退，优先保证流水线可继续。
-                    writeDebugDump(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_chunk${i + 1}_similar`, {
-                        chunkIndex: i + 1,
-                        chunkEntries: chunkEntries.map((e) => ({ index: e.index, startTime: e.startTime, endTime: e.endTime, text: e.text })),
-                        sanitizedTexts: sanitizedTexts,
-                        numberedPrompt: numberedLines,
-                        rawResponse,
-                        similarCount,
-                        total: sanitizedTexts.length,
-                    });
-
-                    log(`Translate [${targetLang}]: 块 ${i + 1}/${chunks.length} 输出高度相似；回退到已 sanitize 的原文。`);
+                const decision = this.recoveryAgent.decide('translate', { attempt, chunkSize: currentChunkSize, promptVariant, failures }, failure);
+                log(`Translate [${targetLang}]: 块 ${i + 1}/${chunks.length} 检测到 ${failure}，恢复策略=${decision.reason}`);
+                if (!decision.shouldRetry) {
                     resultTexts = [...sanitizedTexts];
+                    break;
                 }
+                promptVariant = decision.nextPromptVariant;
+                currentChunkSize = decision.nextChunkSize;
             }
 
             // 恢复占位符，并检查是否有占位符泄露。
@@ -269,12 +219,7 @@ export class TranslateService {
                     }
                 }
                 if (this.compliance.detectLeakage(restored)) {
-                    // 发现泄露时回退而不是抛错。
-                    writeDebugDump(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_chunk${i + 1}_leak`, {
-                        chunkIndex: i + 1,
-                        idx,
-                        restored,
-                    });
+                    writeDebugDump(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_chunk${i + 1}_leak`, { chunkIndex: i + 1, idx, restored });
                     restored = sanitizedTexts[idx];
                 }
 
@@ -298,7 +243,7 @@ export class TranslateService {
                         idx: k,
                         chunkEntries: chunkEntries.map((e) => ({ index: e.index, startTime: e.startTime, endTime: e.endTime, text: e.text })),
                         sanitizedTexts: sanitizedTexts,
-                        numberedPrompt: numberedLines,
+                        numberedPrompt: buildNumberedPrompt(sanitizedTexts),
                         rawResponse,
                         leakedLine: t,
                     });
@@ -394,6 +339,56 @@ export class TranslateService {
             /do not add explanation/i,
         ];
         return leakPatterns.some((p) => p.test(text));
+    }
+
+    private buildTranslateSystemPrompt(langName: string, variant: PromptVariant): string {
+        if (variant === 'reduced_risk') {
+            return `You translate subtitle lines into ${langName}. Return only numbered translated lines like [1], [2]. Keep placeholders such as __COMPLIANCE_N__ unchanged. Do not add explanations, comments, or unsafe elaboration.`;
+        }
+        if (variant === 'strict_format') {
+            return `Translate each subtitle line to ${langName}. Output exactly one numbered line for each input line, preserving numbering and placeholders. No extra text.`;
+        }
+        return `You are a professional subtitle translator. Translate the following subtitle lines to ${langName}. Output ONLY the translated lines, one per line, prefixed with their number like [1], [2], etc. Keep the exact same number of lines. Preserve any placeholders (like __COMPLIANCE_N__) as-is. Do not add explanations or notes.`;
+    }
+
+    private async writeRefusalAnalysis(
+        llmSrtPath: string,
+        targetLang: string,
+        chunkIndex: number,
+        chunkEntries: SrtEntry[],
+        sanitizedTexts: string[],
+        numberedLines: string,
+        options?: { signal?: AbortSignal; logFn?: (msg: string) => void; outputDir?: string }
+    ): Promise<void> {
+        const log = options?.logFn ?? (() => { });
+        try {
+            const outDir = options?.outputDir ?? path.dirname(llmSrtPath);
+            const baseName = path.basename(llmSrtPath).replace(/\.llm\.srt$/i, '');
+            const ts = new Date().toISOString().replace(/[:.]/g, '-');
+            const promptFile = path.join(outDir, `${baseName}.${targetLang}.llm-refused-prompt.chunk${chunkIndex}.${ts}.txt`);
+            fs.writeFileSync(promptFile, numberedLines, 'utf-8');
+            log(`已写入被拒绝的 LLM prompt：${promptFile}`);
+
+            const analysisPrompt = '分析哪个词会被安全审查：\n' + sanitizedTexts.map((t, idx) => `[${idx + 1}] ${t}`).join('\n');
+            const analysisResponse = await this.llmClient.chat([
+                { role: 'system', content: '你是安全审查分析助手。请列出输入文本中可能触发安全审查的词或短语，按行对应编号返回。' },
+                { role: 'user', content: analysisPrompt },
+            ], { signal: options?.signal });
+
+            const analysisFile = path.join(outDir, `${baseName}.${targetLang}.llm-refused-analysis.chunk${chunkIndex}.${ts}.txt`);
+            fs.writeFileSync(analysisFile, analysisResponse.content || '', 'utf-8');
+            log(`已写入被拒绝 LLM 分析：${analysisFile}`);
+
+            writeDebugDump(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_refused_analysis_chunk${chunkIndex}`, {
+                chunkIndex,
+                chunkEntries: chunkEntries.map((e) => ({ index: e.index, startTime: e.startTime, endTime: e.endTime, text: e.text })),
+                sanitizedTexts,
+                numberedPrompt: analysisPrompt,
+                rawResponse: analysisResponse.content || '',
+            });
+        } catch (e) {
+            try { log(`LLM 被拒绝分析请求失败：${String(e)}`); } catch { /* ignore */ }
+        }
     }
 
     private finalizeTranslateOutput(llmSrtPath: string, targetLang: string, translatedEntries: SrtEntry[], totalHits: number, options?: { outputDir?: string }) {

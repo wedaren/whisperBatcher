@@ -28,6 +28,7 @@
    - [src/services/whisperService.ts](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/services/whisperService.ts)
    - [src/services/optimizeService.ts](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/services/optimizeService.ts)
    - [src/services/translateService.ts](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/services/translateService.ts)
+   - [src/services/llmRecoveryAgent.ts](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/services/llmRecoveryAgent.ts)
    - 负责真正的字幕处理
 6. 辅助基础设施层
    - [src/services/llmClient.ts](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/services/llmClient.ts)
@@ -52,6 +53,9 @@
 - `PipelineRunner`
   - 对单个任务串起三阶段处理
   - 持续把阶段状态和产物回写到 `TaskStore`
+- `LlmRecoveryAgent`
+  - 为 optimize / translate 提供受控恢复策略
+  - 遇到拒答、格式错、疑似未翻译时，不直接终止，而是切换 prompt 或降级
 - `TaskTreeDataProvider`
   - 订阅 `TaskStore` 变化
   - 将任务和输出文件渲染到侧边栏树视图
@@ -64,6 +68,16 @@
   - 这样即使聊天关闭，后台任务仍能继续运行
 - 任务状态通过 `TaskStore` 持久化
   - agent 后续可以通过任务 ID 恢复上下文并继续查询
+
+## LLM 恢复策略
+
+- `optimize` 和 `translate` 现在都接入了受控恢复 agent
+- 该 agent 不是开放式聊天代理，而是策略引擎
+  - `call_error`：同策略重试
+  - `refusal`：切换低风险 prompt
+  - `parse_mismatch`：切换严格格式 prompt
+  - `untranslated`：强化翻译约束
+  - 超过尝试上限后降级为回退原文
 
 ## 目录与输出约定
 
