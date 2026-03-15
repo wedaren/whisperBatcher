@@ -19,12 +19,14 @@ import { SrtEntry } from '../types';
 import { OPTIMIZE_CHUNK_SIZE, OPTIMIZE_OVERLAP } from '../constants';
 import { parseNumberedResponse, isRefusal, writeDebugDump, buildNumberedPrompt, SanitizeEntry } from './llmUtils';
 import { LlmRecoveryAgent, type PromptVariant, type RecoveryFailureKind } from './llmRecoveryAgent';
+import { ReviewAgent } from './reviewAgent';
 
 export class OptimizeService {
     constructor(
         private llmClient: LLMClient,
         private compliance: ComplianceService,
-        private recoveryAgent: LlmRecoveryAgent = new LlmRecoveryAgent()
+        private recoveryAgent: LlmRecoveryAgent = new LlmRecoveryAgent(),
+        private reviewAgent: ReviewAgent = new ReviewAgent()
     ) { }
 
     /**
@@ -133,9 +135,7 @@ export class OptimizeService {
                 }
 
                 failures.push(failure);
-                if (failure === 'refusal') {
-                    await this.writeRefusalAnalysis(rawSrtPath, i + 1, chunkEntries, sanitizedTexts, numberedLines, options);
-                } else {
+                if (failure !== 'refusal') {
                     writeDebugDump(path.dirname(rawSrtPath), `optimize_chunk${i + 1}_${failure}`, {
                         chunkIndex: i + 1,
                         chunkEntries: chunkEntries.map((e) => ({ index: e.index, startTime: e.startTime, endTime: e.endTime, text: e.text })),
@@ -151,6 +151,16 @@ export class OptimizeService {
                 const decision = this.recoveryAgent.decide('optimize', { attempt, chunkSize: currentChunkSize, promptVariant, failures }, failure);
                 log(`优化：块 ${i + 1}/${chunks.length} 检测到 ${failure}，恢复策略=${decision.reason}`);
                 if (!decision.shouldRetry) {
+                    this.reviewAgent.recordFailure(path.dirname(rawSrtPath), {
+                        stage: 'optimize',
+                        chunkIndex: i + 1,
+                        chunkEntries,
+                        sanitizedTexts,
+                        failure,
+                        promptVariant,
+                        fallbackMode: decision.fallbackMode,
+                        reason: decision.reason,
+                    });
                     resultTexts = [...sanitizedTexts];
                     break;
                 }
@@ -240,41 +250,4 @@ export class OptimizeService {
         return 'You are a subtitle editor. Optimize the following subtitle lines for readability. Fix grammar, punctuation, and make text natural while preserving the original meaning. Output ONLY the optimized lines, one per line, prefixed with their number like [1], [2], etc. Keep the exact same number of lines. Do not add any explanations.';
     }
 
-    private async writeRefusalAnalysis(
-        rawSrtPath: string,
-        chunkIndex: number,
-        chunkEntries: SrtEntry[],
-        sanitizedTexts: string[],
-        numberedLines: string,
-        options?: { signal?: AbortSignal; logFn?: (msg: string) => void; chunkSize?: number; overlap?: number }
-    ): Promise<void> {
-        const log = options?.logFn ?? (() => { });
-        try {
-            const outDir = path.dirname(rawSrtPath);
-            const baseName = path.basename(rawSrtPath).replace(/\.raw\.srt$/i, '');
-            const ts = new Date().toISOString().replace(/[:.]/g, '-');
-            const promptFile = path.join(outDir, `${baseName}.llm-refused-prompt.chunk${chunkIndex}.${ts}.txt`);
-            fs.writeFileSync(promptFile, numberedLines, 'utf-8');
-            log(`已写入 LLM 拒绝 prompt：${promptFile}`);
-
-            const analysisPrompt = '分析哪个词会被安全审查：\n' + sanitizedTexts.map((t, idx) => `[${idx + 1}] ${t}`).join('\n');
-            const analysisResponse = await this.llmClient.chat([
-                { role: 'system', content: '你是安全审查分析助手。请列出输入文本中可能触发安全审查的词或短语，按行对应编号返回。' },
-                { role: 'user', content: analysisPrompt },
-            ], { signal: options?.signal });
-            const analysisFile = path.join(outDir, `${baseName}.llm-refused-analysis.chunk${chunkIndex}.${ts}.txt`);
-            fs.writeFileSync(analysisFile, analysisResponse.content || '', 'utf-8');
-            log(`已写入 LLM 拒绝分析：${analysisFile}`);
-
-            writeDebugDump(path.dirname(rawSrtPath), `optimize_refused_analysis_chunk${chunkIndex}`, {
-                chunkIndex,
-                chunkEntries: chunkEntries.map((e) => ({ index: e.index, startTime: e.startTime, endTime: e.endTime, text: e.text })),
-                sanitizedTexts,
-                numberedPrompt: analysisPrompt,
-                rawResponse: analysisResponse.content || '',
-            });
-        } catch (e) {
-            try { log(`LLM 拒绝分析请求失败：${String(e)}`); } catch { /* ignore */ }
-        }
-    }
 }

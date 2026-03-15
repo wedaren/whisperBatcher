@@ -56,6 +56,10 @@
 - `LlmRecoveryAgent`
   - 为 optimize / translate 提供受控恢复策略
   - 遇到拒答、格式错、疑似未翻译时，不直接终止，而是切换 prompt 或降级
+- `ReviewAgent`
+  - 只分析最终失败块
+  - 输出 `manual-review.json` 与 `lexicon-candidates.json`
+  - 不参与主链路重试，也不自动写入正式词典
 - `TaskTreeDataProvider`
   - 订阅 `TaskStore` 变化
   - 将任务和输出文件渲染到侧边栏树视图
@@ -75,9 +79,20 @@
 - 该 agent 不是开放式聊天代理，而是策略引擎
   - `call_error`：同策略重试
   - `refusal`：切换低风险 prompt
-  - `parse_mismatch`：切换严格格式 prompt
-  - `untranslated`：强化翻译约束
-  - 超过尝试上限后降级为回退原文
+- `parse_mismatch`：切换严格格式 prompt
+- `untranslated`：强化翻译约束
+- 超过尝试上限后降级为回退原文
+
+## ExecutionAgent / ReviewAgent
+
+- `ExecutionAgent`
+  - 主目标是完成任务，不是穷尽分析
+  - `refusal` 默认只做一次保守重试
+  - 再失败直接降级
+- `ReviewAgent`
+  - 主流程结束后记录失败块
+  - 为人工维护词典提供候选池
+  - 候选只进入 review 文件，不自动生效
 
 ## 目录与输出约定
 

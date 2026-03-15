@@ -63,6 +63,22 @@ Whisper 转录可能持续较长时间，因此 Copilot agent 不采用“单次
 - 安全拒答可通过更保守的 prompt 再尝试
 - 所有恢复动作都有日志和调试转储
 
+## 双 Agent 设计
+
+当前 LLM 相关阶段采用双 agent 分工：
+
+- `ExecutionAgent`
+  - 执行 optimize / translate
+  - 遇到拒答时只做很短的恢复链
+  - 失败后快速降级，保证主任务继续
+- `ReviewAgent`
+  - 只记录失败块
+  - 输出 `manual-review.json`
+  - 输出 `lexicon-candidates.json`
+  - 不自动修改正式词典
+
+默认情况下，拒答后不会再额外发起一次在线 LLM 分析请求，避免主流程被重复拒答和额外耗时拖慢。
+
 ## 依赖要求
 
 - VS Code `1.109.0` 或更高版本

@@ -19,12 +19,14 @@ import { SrtEntry } from '../types';
 import { TRANSLATE_CHUNK_SIZE, TRANSLATE_OVERLAP, SIMILARITY_THRESHOLD, UNTRANSLATED_LINE_RATIO, ENGLISH_DETECTION_RATIO, LANG_NAMES } from '../constants';
 import { parseNumberedResponse, isRefusal, writeDebugDump, buildNumberedPrompt, SanitizeEntry } from './llmUtils';
 import { LlmRecoveryAgent, type PromptVariant, type RecoveryFailureKind } from './llmRecoveryAgent';
+import { ReviewAgent } from './reviewAgent';
 
 export class TranslateService {
     constructor(
         private llmClient: LLMClient,
         private compliance: ComplianceService,
-        private recoveryAgent: LlmRecoveryAgent = new LlmRecoveryAgent()
+        private recoveryAgent: LlmRecoveryAgent = new LlmRecoveryAgent(),
+        private reviewAgent: ReviewAgent = new ReviewAgent()
     ) { }
 
     /**
@@ -176,9 +178,7 @@ export class TranslateService {
                 }
 
                 failures.push(failure);
-                if (failure === 'refusal') {
-                    await this.writeRefusalAnalysis(llmSrtPath, targetLang, i + 1, chunkEntries, sanitizedTexts, numberedLines, options);
-                } else {
+                if (failure !== 'refusal') {
                     writeDebugDump(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_chunk${i + 1}_${failure}`, {
                         chunkIndex: i + 1,
                         chunkEntries: chunkEntries.map((e) => ({ index: e.index, startTime: e.startTime, endTime: e.endTime, text: e.text })),
@@ -194,6 +194,17 @@ export class TranslateService {
                 const decision = this.recoveryAgent.decide('translate', { attempt, chunkSize: currentChunkSize, promptVariant, failures }, failure);
                 log(`Translate [${targetLang}]: 块 ${i + 1}/${chunks.length} 检测到 ${failure}，恢复策略=${decision.reason}`);
                 if (!decision.shouldRetry) {
+                    this.reviewAgent.recordFailure(options?.outputDir ?? path.dirname(llmSrtPath), {
+                        stage: 'translate',
+                        chunkIndex: i + 1,
+                        chunkEntries,
+                        sanitizedTexts,
+                        failure,
+                        promptVariant,
+                        fallbackMode: decision.fallbackMode,
+                        reason: decision.reason,
+                        targetLang,
+                    });
                     resultTexts = [...sanitizedTexts];
                     break;
                 }
@@ -349,46 +360,6 @@ export class TranslateService {
             return `Translate each subtitle line to ${langName}. Output exactly one numbered line for each input line, preserving numbering and placeholders. No extra text.`;
         }
         return `You are a professional subtitle translator. Translate the following subtitle lines to ${langName}. Output ONLY the translated lines, one per line, prefixed with their number like [1], [2], etc. Keep the exact same number of lines. Preserve any placeholders (like __COMPLIANCE_N__) as-is. Do not add explanations or notes.`;
-    }
-
-    private async writeRefusalAnalysis(
-        llmSrtPath: string,
-        targetLang: string,
-        chunkIndex: number,
-        chunkEntries: SrtEntry[],
-        sanitizedTexts: string[],
-        numberedLines: string,
-        options?: { signal?: AbortSignal; logFn?: (msg: string) => void; outputDir?: string }
-    ): Promise<void> {
-        const log = options?.logFn ?? (() => { });
-        try {
-            const outDir = options?.outputDir ?? path.dirname(llmSrtPath);
-            const baseName = path.basename(llmSrtPath).replace(/\.llm\.srt$/i, '');
-            const ts = new Date().toISOString().replace(/[:.]/g, '-');
-            const promptFile = path.join(outDir, `${baseName}.${targetLang}.llm-refused-prompt.chunk${chunkIndex}.${ts}.txt`);
-            fs.writeFileSync(promptFile, numberedLines, 'utf-8');
-            log(`已写入被拒绝的 LLM prompt：${promptFile}`);
-
-            const analysisPrompt = '分析哪个词会被安全审查：\n' + sanitizedTexts.map((t, idx) => `[${idx + 1}] ${t}`).join('\n');
-            const analysisResponse = await this.llmClient.chat([
-                { role: 'system', content: '你是安全审查分析助手。请列出输入文本中可能触发安全审查的词或短语，按行对应编号返回。' },
-                { role: 'user', content: analysisPrompt },
-            ], { signal: options?.signal });
-
-            const analysisFile = path.join(outDir, `${baseName}.${targetLang}.llm-refused-analysis.chunk${chunkIndex}.${ts}.txt`);
-            fs.writeFileSync(analysisFile, analysisResponse.content || '', 'utf-8');
-            log(`已写入被拒绝 LLM 分析：${analysisFile}`);
-
-            writeDebugDump(options?.outputDir ?? path.dirname(llmSrtPath), `translate_${targetLang}_refused_analysis_chunk${chunkIndex}`, {
-                chunkIndex,
-                chunkEntries: chunkEntries.map((e) => ({ index: e.index, startTime: e.startTime, endTime: e.endTime, text: e.text })),
-                sanitizedTexts,
-                numberedPrompt: analysisPrompt,
-                rawResponse: analysisResponse.content || '',
-            });
-        } catch (e) {
-            try { log(`LLM 被拒绝分析请求失败：${String(e)}`); } catch { /* ignore */ }
-        }
     }
 
     private finalizeTranslateOutput(llmSrtPath: string, targetLang: string, translatedEntries: SrtEntry[], totalHits: number, options?: { outputDir?: string }) {

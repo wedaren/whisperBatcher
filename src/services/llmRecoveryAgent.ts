@@ -50,6 +50,16 @@ export class LlmRecoveryAgent {
         const nextAttempt = state.attempt + 1;
         const fallbackMode = stage === 'translate' ? 'sanitized_source' : 'sanitized_source';
 
+        if (failure === 'refusal' && nextAttempt >= 2) {
+            return {
+                shouldRetry: false,
+                nextChunkSize: state.chunkSize,
+                nextPromptVariant: state.promptVariant,
+                reason: '拒答后已完成一次保守重试，直接转入降级模式',
+                fallbackMode,
+            };
+        }
+
         if (nextAttempt >= MAX_RECOVERY_ATTEMPTS) {
             return {
                 shouldRetry: false,
