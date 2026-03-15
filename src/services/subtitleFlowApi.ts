@@ -12,6 +12,7 @@ import { TranslateService } from './translateService';
 import { ComplianceService } from './complianceService';
 import { TaskScheduler } from './taskScheduler';
 import { Logger } from './logger';
+import { resolveTaskOutputDir } from './artifactLayout';
 import {
     type BatchSummary,
     type EnqueueTaskInput,
@@ -390,9 +391,7 @@ export class SubtitleFlowApiService implements SubtitleFlowApi {
 
     private resolveTaskOutputDir(videoPath: string): string {
         const suffix = vscode.workspace.getConfiguration('subtitleFlow').get<string>('outputFolderSuffix', OUTPUT_FOLDER_SUFFIX);
-        const videoDir = path.dirname(videoPath);
-        const baseName = path.basename(videoPath, path.extname(videoPath));
-        return path.join(videoDir, `${baseName}${suffix}`);
+        return resolveTaskOutputDir(videoPath, suffix);
     }
 
     private loadComplianceRules(logFn?: (msg: string) => void): void {

@@ -122,25 +122,25 @@ export class TaskTreeDataProvider implements vscode.TreeDataProvider<TaskTreeIte
 
         // 输出目录
         if (task.outputs.folder) {
-            children.push(new TaskTreeItem(task, true, task.outputs.folder, '📁 Outputs Folder'));
+            children.push(new TaskTreeItem(task, true, task.outputs.folder, '📁 Subtitle Folder'));
         }
 
         // 面向用户的最终字幕文件
         if (task.outputs.finalSrt) {
-            children.push(new TaskTreeItem(task, true, task.outputs.finalSrt, '🎯 Final SRT'));
+            children.push(new TaskTreeItem(task, true, task.outputs.finalSrt, '🎯 Default Subtitle'));
         }
 
         if (task.outputs.config) {
             children.push(new TaskTreeItem(task, true, task.outputs.config, '⚙️ Task Config'));
         }
         if (task.outputs.log) {
-            children.push(new TaskTreeItem(task, true, task.outputs.log, '📄 Execution Log'));
+            children.push(new TaskTreeItem(task, true, task.outputs.log, '📄 Task Log'));
         }
         if (task.outputs.raw) {
-            children.push(new TaskTreeItem(task, true, task.outputs.raw, '📝 Raw SRT'));
+            children.push(new TaskTreeItem(task, true, task.outputs.raw, '📝 Raw Transcript'));
         }
         if (task.outputs.llm) {
-            children.push(new TaskTreeItem(task, true, task.outputs.llm, '✨ Optimized SRT'));
+            children.push(new TaskTreeItem(task, true, task.outputs.llm, '✨ Optimized Subtitle'));
         }
 
         for (const [lang, filePath] of Object.entries(task.outputs.translated)) {

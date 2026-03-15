@@ -34,7 +34,13 @@ export const window = {
     showOpenDialog: async () => [],
     showInformationMessage: async () => { },
     showErrorMessage: async () => { },
+    showWarningMessage: async () => { },
     createTreeView: () => ({ dispose: () => { } }),
+    createOutputChannel: () => ({
+        appendLine: () => { },
+        show: () => { },
+        dispose: () => { },
+    }),
 };
 
 export const commands = {

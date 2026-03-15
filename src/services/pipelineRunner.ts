@@ -12,6 +12,7 @@ import { TranslateService } from './translateService';
 import { ComplianceService } from './complianceService';
 import { Logger } from './logger';
 import { OPTIMIZE_CHUNK_SIZE, OPTIMIZE_OVERLAP } from '../constants';
+import { buildArtifactLayout } from './artifactLayout';
 
 export class PipelineRunner {
     constructor(
@@ -47,10 +48,15 @@ export class PipelineRunner {
 
         const videoDir = path.dirname(task.videoPath);
         const baseName = path.basename(task.videoPath, path.extname(task.videoPath));
-
+        const taskModel = task.config?.whisperModel ?? config.get<string>('whisperModel', 'tiny');
+        const taskLanguage = task.config?.whisperLanguage ?? config.get<string>('whisperLanguage', 'auto');
         const suffix = config.get<string>('outputFolderSuffix', '.subtitle');
-        const folderName = baseName + suffix;
-        const taskOutputDir = path.join(videoDir, folderName);
+        const layout = buildArtifactLayout(task.videoPath, {
+            outputDir: path.join(videoDir, `${baseName}${suffix}`),
+            whisperModel: taskModel,
+            whisperLanguage: taskLanguage,
+        });
+        const taskOutputDir = layout.outputDir;
 
         const logFn = this.logger.createTaskLogFn(task.videoPath, taskId, taskOutputDir);
 
@@ -58,9 +64,6 @@ export class PipelineRunner {
             complianceRulesPath = path.join(this.extensionPath, 'resources', 'default-lexicon.yml');
             logFn(`Using default compliance lexicon: ${complianceRulesPath}`);
         }
-
-        const taskModel = task.config?.whisperModel ?? config.get<string>('whisperModel', 'tiny');
-        const taskLanguage = task.config?.whisperLanguage ?? config.get<string>('whisperLanguage', 'auto');
 
         // 确保输出目录存在（不使用单独的 meta 目录）
         if (!fs.existsSync(taskOutputDir)) { fs.mkdirSync(taskOutputDir, { recursive: true }); }
@@ -78,23 +81,26 @@ export class PipelineRunner {
 
         try {
             // 阶段 1：转录。优先复用已有输出，避免重复计算。
-            const modelSafe = taskModel.replace(/[^a-zA-Z0-9_-]/g, '_');
-            const rawSrtPath = path.join(taskOutputDir, `${baseName}.${modelSafe}.raw.srt`);
+            const rawSrtPath = layout.rawTranscriptPath;
+            const rawCachePath = layout.rawCachePath;
             let finalRawSrtPath = rawSrtPath;
 
-            // 同时兼容历史版本曾写到视频同级目录的旧文件。
-            const legacyRaw = path.join(videoDir, `${baseName}.${modelSafe}.raw.srt`);
+            if (!fs.existsSync(layout.rawCacheDir)) {
+                fs.mkdirSync(layout.rawCacheDir, { recursive: true });
+            }
 
-            if (fs.existsSync(rawSrtPath)) {
-                logFn(`阶段 1/3：在输出目录中找到已存在的原始字幕，跳过转录 → ${path.basename(rawSrtPath)}`);
+            if (fs.existsSync(rawCachePath)) {
+                this.syncMainArtifact(rawCachePath, rawSrtPath);
+                logFn(`阶段 1/3：复用已存在的 Whisper 缓存，跳过转录 → ${path.basename(rawCachePath)}`);
                 this.taskStore.updateTask(taskId, {
                     outputs: { ...task.outputs, raw: rawSrtPath, folder: taskOutputDir },
                 });
-            } else if (fs.existsSync(legacyRaw)) {
+            } else if (fs.existsSync(layout.legacyModelRawPath)) {
                 // 如果发现旧路径文件，优先迁移到新的输出目录结构。
                 try {
-                    fs.renameSync(legacyRaw, rawSrtPath);
-                    logFn(`阶段 1/3：将旧版原始字幕移动到输出目录 → ${path.basename(rawSrtPath)}`);
+                    fs.renameSync(layout.legacyModelRawPath, rawCachePath);
+                    this.syncMainArtifact(rawCachePath, rawSrtPath);
+                    logFn(`阶段 1/3：将旧版原始字幕迁移到缓存并同步主文件 → ${path.basename(rawCachePath)}`);
                 } catch (e: any) {
                     logFn(`警告：无法移动旧版原始字幕（${e.message || String(e)}），将重新转录`);
                     finalRawSrtPath = rawSrtPath;
@@ -108,7 +114,16 @@ export class PipelineRunner {
                     currentPhase: 'transcribing',
                 });
                 logFn('阶段 1/3：开始 Whisper 转录...');
-                finalRawSrtPath = await this.whisper.transcribe(task.videoPath, { signal, taskModel, taskLanguage, outputDir: taskOutputDir });
+                await this.whisper.transcribe(task.videoPath, {
+                    signal,
+                    taskModel,
+                    taskLanguage,
+                    outputDir: taskOutputDir,
+                    outputPath: rawCachePath,
+                    logFn,
+                });
+                this.syncMainArtifact(rawCachePath, rawSrtPath);
+                finalRawSrtPath = rawSrtPath;
                 this.taskStore.updateTask(taskId, {
                     outputs: { ...task.outputs, raw: finalRawSrtPath, folder: taskOutputDir },
                 });
@@ -116,19 +131,18 @@ export class PipelineRunner {
             }
 
             // 阶段 2：优化。逻辑与转录阶段一致，也会先尝试复用旧产物。
-            const llmSrtPath = path.join(taskOutputDir, `${baseName}.llm.srt`);
+            const llmSrtPath = layout.optimizedSubtitlePath;
             let finalLlmSrtPath = llmSrtPath;
             let currentTask = this.taskStore.getTask(taskId)!;
-            const legacyLlm = path.join(videoDir, `${baseName}.llm.srt`);
 
             if (fs.existsSync(llmSrtPath)) {
                 logFn(`阶段 2/3：在输出目录中找到已存在的 LLM 优化字幕，跳過优化 → ${path.basename(llmSrtPath)}`);
                 this.taskStore.updateTask(taskId, {
                     outputs: { ...currentTask.outputs, llm: llmSrtPath, folder: taskOutputDir },
                 });
-            } else if (fs.existsSync(legacyLlm)) {
+            } else if (fs.existsSync(layout.legacyLlmPath)) {
                 try {
-                    fs.renameSync(legacyLlm, llmSrtPath);
+                    fs.renameSync(layout.legacyLlmPath, llmSrtPath);
                     logFn(`阶段 2/3：将旧版 LLM 字幕移动到输出目录 → ${path.basename(llmSrtPath)}`);
                 } catch (e: any) {
                     logFn(`警告：无法移动旧版 LLM 字幕（${e.message || String(e)}），将重新优化`);
@@ -143,7 +157,7 @@ export class PipelineRunner {
                     currentPhase: 'optimizing',
                 });
                 logFn('阶段 2/3：开始 LLM 优化...');
-                const optimizeResult = await this.optimize.optimize(finalRawSrtPath, { signal, logFn });
+                const optimizeResult = await this.optimize.optimize(finalRawSrtPath, { signal, logFn, outputPath: llmSrtPath });
                 finalLlmSrtPath = optimizeResult.llmSrtPath;
                 currentTask = this.taskStore.getTask(taskId)!;
 
@@ -161,30 +175,37 @@ export class PipelineRunner {
             });
             logFn(`阶段 3/3：开始翻译到 [${targetLanguages.join(', ')}]...`);
 
-            // 显式传入与优化阶段一致的分块参数，降低边界不一致风险。
-            const translateResult = await this.translate.translateAll(
-                finalLlmSrtPath,
-                targetLanguages,
-                { signal, logFn, outputDir: videoDir, chunkSize: OPTIMIZE_CHUNK_SIZE, overlap: OPTIMIZE_OVERLAP }
-            );
+            const translatedPaths: Record<string, string> = {};
+            let translateHits = 0;
+            for (const lang of targetLanguages) {
+                const translatedPath = layout.translatedPath(lang);
+                if (fs.existsSync(translatedPath)) {
+                    translatedPaths[lang] = translatedPath;
+                    logFn(`阶段 3/3：复用已存在的翻译字幕 → ${path.basename(translatedPath)}`);
+                    continue;
+                }
+
+                const result = await this.translate.translateToLanguage(
+                    finalLlmSrtPath,
+                    lang,
+                    { signal, logFn, outputDir: taskOutputDir, outputPath: translatedPath, chunkSize: OPTIMIZE_CHUNK_SIZE, overlap: OPTIMIZE_OVERLAP }
+                );
+                translatedPaths[lang] = result.translatedPath;
+                translateHits += result.complianceHits;
+            }
 
             const updatedTask = this.taskStore.getTask(taskId)!;
             // 最终主输出优先取第一个目标语言的翻译结果。
-            const primaryLang = targetLanguages[0];
-            const primaryFinal = translateResult.paths[primaryLang] ?? Object.values(translateResult.paths)[0] ?? '';
-
-            // 当前主流程将优化后的 LLM 字幕复制为 `<basename>.srt`，
-            // 作为最容易被播放器或用户直接识别的默认字幕文件。
-            let primaryCopyPath = '';
+            this.syncMainArtifact(finalLlmSrtPath, layout.defaultSubtitlePath);
+            let companionCopyPath = '';
             try {
                 if (finalLlmSrtPath && fs.existsSync(finalLlmSrtPath)) {
-                    primaryCopyPath = path.join(videoDir, `${baseName}.srt`);
-                    // 若同名文件已存在，则覆盖为最新结果。
-                    fs.copyFileSync(finalLlmSrtPath, primaryCopyPath);
-                    logFn(`已将 LLM 优化字幕复制到视频同级：${path.basename(primaryCopyPath)}`);
+                    companionCopyPath = layout.videoCompanionSubtitlePath;
+                    fs.copyFileSync(finalLlmSrtPath, companionCopyPath);
+                    logFn(`已将默认字幕复制到视频同级：${path.basename(companionCopyPath)}`);
                 }
             } catch (e: any) {
-                logFn(`警告：未能将 LLM 字幕复制到视频同级：${e.message || String(e)}`);
+                logFn(`警告：未能将默认字幕复制到视频同级：${e.message || String(e)}`);
             }
 
             this.taskStore.updateTask(taskId, {
@@ -192,17 +213,17 @@ export class PipelineRunner {
                 currentPhase: 'completed',
                 outputs: {
                     ...updatedTask.outputs,
-                    translated: translateResult.paths,
+                    translated: translatedPaths,
                     folder: taskOutputDir,
-                    finalSrt: primaryCopyPath || finalLlmSrtPath,
+                    finalSrt: layout.defaultSubtitlePath,
                 },
-                complianceHits: (updatedTask.complianceHits || 0) + translateResult.totalComplianceHits,
+                complianceHits: (updatedTask.complianceHits || 0) + translateHits,
             });
 
-            const translatedFiles = Object.entries(translateResult.paths)
+            const translatedFiles = Object.entries(translatedPaths)
                 .map(([lang, p]) => `${lang}→${path.basename(p)}`)
                 .join(', ');
-            logFn(`阶段 3/3：翻译完成 → ${translatedFiles} （合规命中 ${translateResult.totalComplianceHits} 次）`);
+            logFn(`阶段 3/3：翻译完成 → ${translatedFiles} （合规命中 ${translateHits} 次）`);
             logFn('✅ 所有阶段已成功完成。');
         } catch (err: any) {
             // 统一把异常映射成 paused 或 failed 状态，保证 UI 与持久化状态一致。
@@ -224,5 +245,16 @@ export class PipelineRunner {
             }
             throw err;
         }
+    }
+
+    private syncMainArtifact(sourcePath: string, targetPath: string): void {
+        if (sourcePath === targetPath) {
+            return;
+        }
+        const dir = path.dirname(targetPath);
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
+        fs.copyFileSync(sourcePath, targetPath);
     }
 }

@@ -22,6 +22,7 @@ import { Logger } from './services/logger';
 import { registerCommands } from './commands';
 import { SubtitleFlowExtensionExports } from './publicApi';
 import { SubtitleFlowApiService } from './services/subtitleFlowApi';
+import { ArtifactMigrationService } from './services/artifactMigrationService';
 import { registerSubtitleFlowTools } from './copilot/tools';
 import { registerSubtitleFlowParticipant } from './copilot/participant';
 import { SubtitleFlowAgentHostService, SubtitleFlowExtensionExportsService } from './agent-host';
@@ -72,6 +73,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Subtit
         logger,
         context.extensionPath
     );
+    const migrationService = new ArtifactMigrationService(taskStore, logger);
     const agentHost = new SubtitleFlowAgentHostService(api, SUBTITLE_FLOW_AGENT_MANIFESTS);
     const extensionExports = new SubtitleFlowExtensionExportsService(api, agentHost);
     logger.info('All services created.');
@@ -87,7 +89,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Subtit
     api.onDidChangeTasks(() => treeProvider.refresh());
 
     // ── 4. 注册命令与 Copilot 入口 ──
-    registerCommands(context, { api, logger, treeProvider });
+    registerCommands(context, { api, logger, migrationService, treeProvider });
     registerSubtitleFlowTools(context, api);
     registerSubtitleFlowParticipant(context, api);
 

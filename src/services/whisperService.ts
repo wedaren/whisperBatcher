@@ -17,7 +17,7 @@ export class WhisperService {
      */
     async transcribe(
         videoPath: string,
-        options?: { signal?: AbortSignal; logFn?: (msg: string) => void; taskModel?: string; taskLanguage?: string; outputDir?: string }
+        options?: { signal?: AbortSignal; logFn?: (msg: string) => void; taskModel?: string; taskLanguage?: string; outputDir?: string; outputPath?: string }
     ): Promise<string> {
         const log = options?.logFn ?? (() => { });
         const config = vscode.workspace.getConfiguration('subtitleFlow');
@@ -34,7 +34,7 @@ export class WhisperService {
             fs.mkdirSync(outputDir, { recursive: true });
         }
 
-        const rawSrtPath = path.join(outputDir, `${baseName}.${modelSafe}.raw.srt`);
+        const rawSrtPath = options?.outputPath ?? path.join(outputDir, `${baseName}.${modelSafe}.raw.srt`);
 
         // whisper 默认输出 `<basename>.srt`，稍后会统一改名为 `*.raw.srt`。
         const whisperOutputPath = path.join(outputDir, `${baseName}.srt`);

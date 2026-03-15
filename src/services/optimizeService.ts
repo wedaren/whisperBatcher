@@ -54,7 +54,7 @@ export class OptimizeService {
      */
     async optimize(
         rawSrtPath: string,
-        options?: { signal?: AbortSignal; logFn?: (msg: string) => void; chunkSize?: number; overlap?: number }
+        options?: { signal?: AbortSignal; logFn?: (msg: string) => void; chunkSize?: number; overlap?: number; outputPath?: string }
     ): Promise<{ llmSrtPath: string; complianceHits: number }> {
         const log = options?.logFn ?? (() => { });
         const rawText = fs.readFileSync(rawSrtPath, 'utf-8');
@@ -229,7 +229,7 @@ export class OptimizeService {
         // 写出最终 SRT
         const dir = path.dirname(rawSrtPath);
         const baseName = path.basename(rawSrtPath).replace(/\.raw\.srt$/i, '');
-        const llmSrtPath = path.join(dir, `${baseName}.llm.srt`);
+        const llmSrtPath = options?.outputPath ?? path.join(dir, `${baseName}.llm.srt`);
         fs.writeFileSync(llmSrtPath, formatSrt(optimizedEntries), 'utf-8');
 
         return { llmSrtPath, complianceHits: totalHits };

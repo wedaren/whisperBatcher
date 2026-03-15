@@ -8,12 +8,14 @@ import * as vscode from 'vscode';
 import { VIDEO_EXTENSIONS } from './constants';
 import { Logger } from './services/logger';
 import type { SubtitleFlowApi } from './publicApi';
+import type { ArtifactMigrationService } from './services/artifactMigrationService';
 import { TaskTreeItem } from './views/taskTreeItem';
 import type { TaskTreeDataProvider } from './views/taskTreeProvider';
 
 export interface CommandDependencies {
     api: SubtitleFlowApi;
     logger: Logger;
+    migrationService: ArtifactMigrationService;
     treeProvider?: TaskTreeDataProvider;
 }
 
@@ -28,7 +30,7 @@ export function registerCommands(
     context: vscode.ExtensionContext,
     deps: CommandDependencies
 ): void {
-    const { api, logger } = deps;
+    const { api, logger, migrationService } = deps;
     const treeProvider = deps.treeProvider;
 
     // 添加视频并创建批量任务
@@ -230,6 +232,33 @@ export function registerCommands(
                     logger.info(`Deleted task ${taskId} via public API`);
                 }
             }
+        })
+    );
+
+    // 迁移历史任务产物到新的语义化布局，不重新执行任务。
+    context.subscriptions.push(
+        vscode.commands.registerCommand('subtitleFlow.migrateArtifactLayout', async (item?: TaskTreeItem) => {
+            const task = item?.task;
+            logger.info(task
+                ? `Command: migrateArtifactLayout for ${task.id}`
+                : 'Command: migrateArtifactLayout for all tasks');
+
+            if (task) {
+                const report = migrationService.migrateTask(task.id);
+                if (!report) {
+                    vscode.window.showWarningMessage('Subtitle Flow: Task not found for artifact migration.');
+                    return;
+                }
+                const message = `Subtitle Flow: Migrated ${report.migrated} file(s), skipped ${report.skipped}, conflicts ${report.conflicted}.`;
+                vscode.window.showInformationMessage(message);
+                logger.info(`Artifact migration summary for ${task.id}: ${message}`);
+                return;
+            }
+
+            const summary = migrationService.migrateAllTasks();
+            const message = `Subtitle Flow: Migrated ${summary.migrated} file(s) across ${summary.tasks.length} task(s), skipped ${summary.skipped}, conflicts ${summary.conflicted}.`;
+            vscode.window.showInformationMessage(message);
+            logger.info(`Artifact migration summary for all tasks: ${message}`);
         })
     );
 }

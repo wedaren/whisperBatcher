@@ -36,7 +36,7 @@ export class TranslateService {
     async translateToLanguage(
         llmSrtPath: string,
         targetLang: string,
-        options?: { signal?: AbortSignal; logFn?: (msg: string) => void; outputDir?: string; chunkSize?: number; overlap?: number }
+        options?: { signal?: AbortSignal; logFn?: (msg: string) => void; outputDir?: string; chunkSize?: number; overlap?: number; outputPath?: string }
     ): Promise<{ translatedPath: string; complianceHits: number }> {
         const log = options?.logFn ?? (() => { });
         const srtText = fs.readFileSync(llmSrtPath, 'utf-8');
@@ -84,7 +84,7 @@ export class TranslateService {
             const outDir = options?.outputDir ?? path.dirname(llmSrtPath);
             if (!fs.existsSync(outDir)) { fs.mkdirSync(outDir, { recursive: true }); }
             const baseName = path.basename(llmSrtPath).replace(/\.llm\.srt$/i, '');
-            const translatedPath = path.join(outDir, `${baseName}.${targetLang}.srt`);
+            const translatedPath = options?.outputPath ?? path.join(outDir, `${baseName}.${targetLang}.srt`);
             fs.writeFileSync(translatedPath, srtText, 'utf-8');
             log(`Translate [${targetLang}]: 已启用直接透传（源文本疑似为英文），已跳过 LLM 翻译`);
             return { translatedPath, complianceHits: 0 };
@@ -357,11 +357,17 @@ export class TranslateService {
         return leakPatterns.some((p) => p.test(text));
     }
 
-    private finalizeTranslateOutput(llmSrtPath: string, targetLang: string, translatedEntries: SrtEntry[], totalHits: number, options?: { outputDir?: string }) {
+    private finalizeTranslateOutput(
+        llmSrtPath: string,
+        targetLang: string,
+        translatedEntries: SrtEntry[],
+        totalHits: number,
+        options?: { outputDir?: string; outputPath?: string }
+    ) {
         const outDir = options?.outputDir ?? path.dirname(llmSrtPath);
         if (!fs.existsSync(outDir)) { fs.mkdirSync(outDir, { recursive: true }); }
         const baseName = path.basename(llmSrtPath).replace(/\.llm\.srt$/i, '');
-        const translatedPath = path.join(outDir, `${baseName}.${targetLang}.srt`);
+        const translatedPath = options?.outputPath ?? path.join(outDir, `${baseName}.${targetLang}.srt`);
         fs.writeFileSync(translatedPath, formatSrt(translatedEntries), 'utf-8');
         return { translatedPath, complianceHits: totalHits };
     }

@@ -124,6 +124,7 @@ Whisper 转录可能持续较长时间，因此 Copilot agent 不采用“单次
 
 - 架构文档：[docs/architecture.md](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/docs/architecture.md)
 - Agent 架构设计文档：[docs/agent-architecture.md](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/docs/agent-architecture.md)
+- 产物命名与增量构建设计：[docs/artifact-build-design.md](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/docs/artifact-build-design.md)
 - 原理文档：[docs/principles.md](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/docs/principles.md)
 - 对外接入文档：[docs/developer-api.md](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/docs/developer-api.md)
 

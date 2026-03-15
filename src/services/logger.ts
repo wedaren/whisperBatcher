@@ -5,6 +5,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import { buildArtifactLayout } from './artifactLayout';
 
 export class Logger {
     private outputChannel: vscode.OutputChannel;
@@ -40,8 +41,9 @@ export class Logger {
     createTaskLog(videoPath: string, taskId: string, outputDir?: string): { configFilePath: string, logFilePath: string } {
         const videoDir = outputDir ?? path.dirname(videoPath);
         const videoName = path.basename(videoPath, path.extname(videoPath));
-        const configFilePath = path.join(videoDir, `${videoName}.task.json`);
-        const logFilePath = path.join(videoDir, `${videoName}.log`);
+        const layout = buildArtifactLayout(videoPath, { outputDir: videoDir });
+        const configFilePath = layout.taskConfigPath;
+        const logFilePath = layout.taskLogPath;
 
         const config = vscode.workspace.getConfiguration('subtitleFlow');
         const configToSave = JSON.parse(JSON.stringify(config));
@@ -86,8 +88,8 @@ export class Logger {
      */
     createTaskLogFn(videoPath: string, taskId: string, outputDir?: string): (msg: string) => void {
         const videoDir = outputDir ?? path.dirname(videoPath);
-        const videoName = path.basename(videoPath, path.extname(videoPath));
-        const logFilePath = path.join(videoDir, `${videoName}.log`);
+        const layout = buildArtifactLayout(videoPath, { outputDir: videoDir });
+        const logFilePath = layout.taskLogPath;
         const shortId = taskId.substring(taskId.length - 8);
 
         const maxBytes = vscode.workspace.getConfiguration('subtitleFlow').get<number>('logMaxBytes', 5 * 1024 * 1024);
