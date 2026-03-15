@@ -166,4 +166,23 @@ describe('extension activate', () => {
         assert.equal(result.tasks.length, 2);
         assert.equal(result.started, false);
     });
+
+    it('should reject directories when creating a single task', async () => {
+        const videosDir = path.join(tmpDir, 'videos');
+        fs.mkdirSync(videosDir, { recursive: true });
+
+        const context = {
+            globalStorageUri: vscode.Uri.file(tmpDir),
+            extensionPath: process.cwd(),
+            extensionUri: vscode.Uri.file(process.cwd()),
+            subscriptions: [],
+        } as any;
+
+        const extensionExports = await activate(context);
+
+        await assert.rejects(
+            () => extensionExports.enqueueTask({ videoPath: videosDir }),
+            /must be a file|supported video file/
+        );
+    });
 });

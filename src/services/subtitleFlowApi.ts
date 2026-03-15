@@ -328,6 +328,7 @@ export class SubtitleFlowApiService implements SubtitleFlowApi {
         mode: 'queued' | 'direct',
         batchId?: string
     ): Promise<TaskRecord> {
+        this.assertValidVideoPath(videoPath);
         const task = this.taskStore.addTask(videoPath, options, { batchId });
         const taskOutputDir = this.resolveTaskOutputDir(videoPath);
 
@@ -357,6 +358,29 @@ export class SubtitleFlowApiService implements SubtitleFlowApi {
         }
 
         return updated ?? task;
+    }
+
+    private assertValidVideoPath(videoPath: string): void {
+        const normalizedPath = videoPath.trim();
+        const extension = path.extname(normalizedPath).slice(1).toLowerCase();
+        if (!VIDEO_EXTENSIONS.includes(extension)) {
+            throw new Error(`Task path is not a supported video file: ${videoPath}`);
+        }
+
+        if (!fsSync.existsSync(normalizedPath)) {
+            return;
+        }
+
+        let stat: fsSync.Stats;
+        try {
+            stat = fsSync.statSync(normalizedPath);
+        } catch {
+            throw new Error(`Task path is not accessible: ${videoPath}`);
+        }
+
+        if (!stat.isFile()) {
+            throw new Error(`Task path must be a file, not a directory: ${videoPath}`);
+        }
     }
 
     private toBatchSummary(batchId: string, tasks: TaskRecord[]): BatchSummary {

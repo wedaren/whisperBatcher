@@ -107,7 +107,12 @@ function resolveDirectoryCandidate(raw: string): string | undefined {
 export function extractVideoPath(prompt: string): string | undefined {
     const quoted = prompt.match(/"([^"]+)"/)?.[1] ?? prompt.match(/'([^']+)'/)?.[1];
     if (quoted) {
-        return trimTrailingPathNoise(quoted);
+        const candidate = trimTrailingPathNoise(quoted);
+        const extension = candidate.split('.').pop()?.toLowerCase() ?? '';
+        if (VIDEO_EXTENSIONS.includes(extension) || isVideoFilePath(candidate)) {
+            return candidate;
+        }
+        return undefined;
     }
 
     const fullVideoPath = prompt.match(VIDEO_PATH_RE)?.[1];

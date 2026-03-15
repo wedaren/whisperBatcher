@@ -9,7 +9,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import type { TaskSummary } from '../../src/publicApi';
 import { buildTaskAgentWorkflow, inferTaskAgentIntent, parseTaskAgentIntent } from '../../src/agents/task-agent/policy';
-import { extractDirectoryPath } from '../../src/agents/task-agent/parser';
+import { extractDirectoryPath, extractVideoPath } from '../../src/agents/task-agent/parser';
 import { planTaskAgentWorkflow } from '../../src/agents/task-agent/planner';
 
 function task(partial: Partial<TaskSummary> & Pick<TaskSummary, 'id' | 'videoPath' | 'status'>): TaskSummary {
@@ -122,6 +122,19 @@ describe('task-agent policy', () => {
         try {
             const extracted = extractDirectoryPath(`${directoryPath} 这个目录的视频生成字幕`);
             assert.equal(extracted, directoryPath);
+        } finally {
+            fs.rmSync(rootDir, { recursive: true, force: true });
+        }
+    });
+
+    it('should not treat a quoted directory path as a video path', () => {
+        const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'task-agent-parser-'));
+        const directoryPath = path.join(rootDir, 'demo-folder');
+        fs.mkdirSync(directoryPath, { recursive: true });
+
+        try {
+            const extracted = extractVideoPath(`创建任务 "${directoryPath}"`);
+            assert.equal(extracted, undefined);
         } finally {
             fs.rmSync(rootDir, { recursive: true, force: true });
         }
