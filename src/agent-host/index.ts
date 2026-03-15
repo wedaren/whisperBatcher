@@ -501,6 +501,10 @@ export class SubtitleFlowExtensionExportsService implements SubtitleFlowExtensio
         return this.api.summarizeTaskResult(...args);
     }
 
+    rebuildTask(...args: Parameters<SubtitleFlowApi['rebuildTask']>): ReturnType<SubtitleFlowApi['rebuildTask']> {
+        return this.api.rebuildTask(...args);
+    }
+
     cleanStaleTasks(...args: Parameters<SubtitleFlowApi['cleanStaleTasks']>): ReturnType<SubtitleFlowApi['cleanStaleTasks']> {
         return this.api.cleanStaleTasks(...args);
     }

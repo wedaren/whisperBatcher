@@ -19,6 +19,35 @@ export interface CommandDependencies {
     treeProvider?: TaskTreeDataProvider;
 }
 
+async function rebuildTaskFromStage(
+    api: SubtitleFlowApi,
+    logger: Logger,
+    item: TaskTreeItem | undefined,
+    stage: 'transcribe' | 'optimize' | 'translate'
+): Promise<void> {
+    if (!item?.task) {
+        return;
+    }
+
+    const labels = {
+        transcribe: '从转录阶段重建',
+        optimize: '从优化阶段重建',
+        translate: '从翻译阶段重建',
+    } as const;
+
+    logger.info(`Command: rebuild ${stage} for ${item.task.id}`);
+    const result = await api.rebuildTask(item.task.id, stage);
+    if (!result) {
+        vscode.window.showWarningMessage('Subtitle Flow: Task not found for rebuild.');
+        return;
+    }
+
+    const backupSummary = result.backupDir ? `备份已保存到 ${result.backupDir}` : '本次没有可备份的已有产物';
+    vscode.window.showInformationMessage(
+        `Subtitle Flow: 已${labels[stage]}，清理 ${result.removedPaths.length} 个产物并重新入队。${backupSummary}`
+    );
+}
+
 /**
  * 注册扩展提供的全部命令。
  * 当前命令分为三类：
@@ -188,6 +217,24 @@ export function registerCommands(
                 logger.info(`Command: retryTask for ${item.task.id}`);
                 api.retryTask(item.task.id);
             }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('subtitleFlow.rebuildFromTranscribe', async (item?: TaskTreeItem) => {
+            await rebuildTaskFromStage(api, logger, item, 'transcribe');
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('subtitleFlow.rebuildFromOptimize', async (item?: TaskTreeItem) => {
+            await rebuildTaskFromStage(api, logger, item, 'optimize');
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('subtitleFlow.rebuildFromTranslate', async (item?: TaskTreeItem) => {
+            await rebuildTaskFromStage(api, logger, item, 'translate');
         })
     );
 

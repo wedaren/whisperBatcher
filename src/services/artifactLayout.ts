@@ -43,6 +43,7 @@ export function buildArtifactLayout(videoPath: string, options?: { outputDir?: s
         outputDir,
         cacheRoot,
         rawCacheDir,
+        backupRoot: path.join(outputDir, 'backups'),
         taskConfigPath: path.join(outputDir, ARTIFACT_NAMES.taskConfig),
         taskLogPath: path.join(outputDir, ARTIFACT_NAMES.taskLog),
         rawTranscriptPath: path.join(outputDir, ARTIFACT_NAMES.rawTranscript),

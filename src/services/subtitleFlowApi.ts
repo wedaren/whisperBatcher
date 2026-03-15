@@ -13,6 +13,7 @@ import { ComplianceService } from './complianceService';
 import { TaskScheduler } from './taskScheduler';
 import { Logger } from './logger';
 import { resolveTaskOutputDir } from './artifactLayout';
+import { ArtifactRebuildService } from './artifactRebuildService';
 import {
     type BatchSummary,
     type EnqueueTaskInput,
@@ -20,6 +21,8 @@ import {
     type OptimizeOptions,
     type OptimizeResult,
     type PipelineResult,
+    type RebuildStage,
+    type RebuildTaskResult,
     type RunPipelineOptions,
     type ScanDirectoryOptions,
     type ScanDirectoryResult,
@@ -39,6 +42,8 @@ import {
  * 让命令、Copilot tools 和未来外部扩展共享同一套控制面。
  */
 export class SubtitleFlowApiService implements SubtitleFlowApi {
+    private readonly rebuildService: ArtifactRebuildService;
+
     constructor(
         private readonly taskStore: TaskStore,
         private readonly scheduler: TaskScheduler,
@@ -49,7 +54,9 @@ export class SubtitleFlowApiService implements SubtitleFlowApi {
         private readonly complianceService: ComplianceService,
         private readonly logger: Logger,
         private readonly extensionPath: string
-    ) {}
+    ) {
+        this.rebuildService = new ArtifactRebuildService(taskStore, logger);
+    }
 
     async enqueueTask(input: EnqueueTaskInput, options?: EnqueueTaskOptions): Promise<TaskSummary> {
         const task = await this.createTask(input.videoPath, options, 'queued');
@@ -217,6 +224,32 @@ export class SubtitleFlowApiService implements SubtitleFlowApi {
             configPath: task.outputs.config,
             review,
             message: this.buildTaskResultMessage(task, review),
+        };
+    }
+
+    async rebuildTask(taskId: string, stage: RebuildStage): Promise<RebuildTaskResult | undefined> {
+        if (this.scheduler.isRunning(taskId)) {
+            this.scheduler.pause(taskId);
+        }
+
+        const prepared = this.rebuildService.prepare(taskId, stage);
+        if (!prepared) {
+            return undefined;
+        }
+
+        this.scheduler.enqueue(taskId);
+        this.scheduler.runPending();
+
+        const updatedTask = this.taskStore.getTask(taskId);
+        if (!updatedTask) {
+            return undefined;
+        }
+
+        return {
+            task: toTaskSummary(updatedTask),
+            stage,
+            backupDir: prepared.backupDir,
+            removedPaths: prepared.removedPaths,
         };
     }
 

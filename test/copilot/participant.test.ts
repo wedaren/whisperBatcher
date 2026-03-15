@@ -103,6 +103,19 @@ function createApi(tasks: TaskSummary[]): SubtitleFlowApi {
                 message: 'ok',
             };
         },
+        async rebuildTask(taskId, stage) {
+            const existing = allTasks.find((item) => item.id === taskId);
+            if (!existing) {
+                return undefined;
+            }
+            existing.status = 'queued';
+            existing.currentPhase = 'queued';
+            return {
+                task: existing,
+                stage,
+                removedPaths: [],
+            };
+        },
         cleanStaleTasks() {
             return 0;
         },

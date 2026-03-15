@@ -91,6 +91,24 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "subtitleFlow.rebuildFromTranscribe",
+        "title": "Rebuild From Transcribe",
+        "category": "Subtitle Flow",
+        "icon": "$(debug-restart)"
+      },
+      {
+        "command": "subtitleFlow.rebuildFromOptimize",
+        "title": "Rebuild From Optimize",
+        "category": "Subtitle Flow",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "subtitleFlow.rebuildFromTranslate",
+        "title": "Rebuild From Translate",
+        "category": "Subtitle Flow",
+        "icon": "$(globe)"
+      },
+      {
         "command": "subtitleFlow.revealInOS",
         "title": "Reveal in OS File Manager",
         "category": "Subtitle Flow",
@@ -170,9 +188,24 @@
           "group": "context@1"
         },
         {
-          "command": "subtitleFlow.migrateArtifactLayout",
+          "command": "subtitleFlow.rebuildFromTranscribe",
           "when": "view == subtitleFlowTasks && viewItem =~ /^task/",
           "group": "context@2"
+        },
+        {
+          "command": "subtitleFlow.rebuildFromOptimize",
+          "when": "view == subtitleFlowTasks && viewItem =~ /^task/",
+          "group": "context@2"
+        },
+        {
+          "command": "subtitleFlow.rebuildFromTranslate",
+          "when": "view == subtitleFlowTasks && viewItem =~ /^task/",
+          "group": "context@2"
+        },
+        {
+          "command": "subtitleFlow.migrateArtifactLayout",
+          "when": "view == subtitleFlowTasks && viewItem =~ /^task/",
+          "group": "context@3"
         },
         {
           "command": "subtitleFlow.deleteTask",

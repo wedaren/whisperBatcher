@@ -124,6 +124,15 @@ export interface PipelineResult {
     task: TaskSummary;
 }
 
+export type RebuildStage = 'transcribe' | 'optimize' | 'translate';
+
+export interface RebuildTaskResult {
+    task: TaskSummary;
+    stage: RebuildStage;
+    backupDir?: string;
+    removedPaths: string[];
+}
+
 export interface ScanDirectoryOptions {
     recursive?: boolean;
     maxFiles?: number;
@@ -194,6 +203,7 @@ export interface SubtitleFlowApi {
     getLatestBatch(): BatchSummary | undefined;
     listBatches(): BatchSummary[];
     summarizeTaskResult(taskId: string): TaskResultSummary | undefined;
+    rebuildTask(taskId: string, stage: RebuildStage): Promise<RebuildTaskResult | undefined>;
     cleanStaleTasks(): number;
     pauseTask(taskId: string): void;
     resumeTask(taskId: string): void;
