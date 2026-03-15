@@ -2,7 +2,7 @@
   "name": "whisper-subtitle-flow",
   "displayName": "Whisper Subtitle Flow",
   "description": "Batch subtitle generation & translation with Whisper + LLM",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "publisher": "wedaren",
   "repository": {
     "type": "git",
