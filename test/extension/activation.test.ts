@@ -53,6 +53,9 @@ describe('extension activate', () => {
                 whisperModel: { type: 'string' },
                 whisperLanguage: { type: 'string' },
                 targetLanguages: { type: 'array', items: { type: 'string' } },
+                defaultSubtitleLanguage: { type: 'string' },
+                generateBilingualAss: { type: 'boolean' },
+                bilingualTargetLanguage: { type: 'string' },
             },
             required: ['videoPath'],
         });

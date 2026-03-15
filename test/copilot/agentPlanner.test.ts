@@ -16,7 +16,7 @@ function task(partial: Partial<TaskSummary> & Pick<TaskSummary, 'id' | 'videoPat
         currentPhase: partial.status,
         updatedAt: partial.updatedAt ?? '2026-03-15T00:00:00.000Z',
         batchId: partial.batchId,
-        outputs: partial.outputs ?? { translated: {} },
+        outputs: partial.outputs ?? { translated: {}, bilingualAss: {} },
         config: partial.config,
         lastError: partial.lastError,
         complianceHits: partial.complianceHits,
@@ -30,7 +30,13 @@ describe('inferParticipantIntent', () => {
             [],
             { type: 'help' }
         );
-        assert.deepEqual(result, { type: 'enqueue', videoPath: '/tmp/demo.mp4', autoStart: true });
+        assert.deepEqual(result, {
+            type: 'enqueue',
+            videoPath: '/tmp/demo.mp4',
+            autoStart: true,
+            defaultSubtitleLanguage: 'source',
+            generateBilingualAss: false,
+        });
     });
 
     it('should keep unquoted paths with spaces intact', () => {
@@ -43,6 +49,8 @@ describe('inferParticipantIntent', () => {
             type: 'enqueue',
             videoPath: '/Users/wedaren/Downloads/demo folder/sample clip_part005.mp4',
             autoStart: true,
+            defaultSubtitleLanguage: 'source',
+            generateBilingualAss: false,
         });
     });
 
@@ -57,6 +65,8 @@ describe('inferParticipantIntent', () => {
             type: 'enqueue',
             videoPath,
             autoStart: true,
+            defaultSubtitleLanguage: 'source',
+            generateBilingualAss: false,
         });
     });
 

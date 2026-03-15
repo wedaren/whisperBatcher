@@ -383,6 +383,15 @@
               "items": {
                 "type": "string"
               }
+            },
+            "defaultSubtitleLanguage": {
+              "type": "string"
+            },
+            "generateBilingualAss": {
+              "type": "boolean"
+            },
+            "bilingualTargetLanguage": {
+              "type": "string"
             }
           },
           "required": [
@@ -427,6 +436,15 @@
               "items": {
                 "type": "string"
               }
+            },
+            "defaultSubtitleLanguage": {
+              "type": "string"
+            },
+            "generateBilingualAss": {
+              "type": "boolean"
+            },
+            "bilingualTargetLanguage": {
+              "type": "string"
             }
           },
           "required": [

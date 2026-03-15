@@ -146,6 +146,9 @@ export class TaskTreeDataProvider implements vscode.TreeDataProvider<TaskTreeIte
         for (const [lang, filePath] of Object.entries(task.outputs.translated)) {
             children.push(new TaskTreeItem(task, true, filePath, `🌍 ${lang}`));
         }
+        for (const [lang, filePath] of Object.entries(task.outputs.bilingualAss ?? {})) {
+            children.push(new TaskTreeItem(task, true, filePath, `🎞️ Bilingual ASS ${lang}`));
+        }
 
         return children;
     }

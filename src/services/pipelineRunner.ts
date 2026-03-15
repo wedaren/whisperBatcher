@@ -13,8 +13,11 @@ import { ComplianceService } from './complianceService';
 import { Logger } from './logger';
 import { OPTIMIZE_CHUNK_SIZE, OPTIMIZE_OVERLAP } from '../constants';
 import { buildArtifactLayout } from './artifactLayout';
+import { SubtitleExportService } from './subtitleExportService';
 
 export class PipelineRunner {
+    private readonly subtitleExportService = new SubtitleExportService();
+
     constructor(
         private taskStore: TaskStore,
         private whisper: WhisperService,
@@ -195,18 +198,17 @@ export class PipelineRunner {
             }
 
             const updatedTask = this.taskStore.getTask(taskId)!;
-            // 最终主输出优先取第一个目标语言的翻译结果。
-            this.syncMainArtifact(finalLlmSrtPath, layout.defaultSubtitlePath);
-            let companionCopyPath = '';
-            try {
-                if (finalLlmSrtPath && fs.existsSync(finalLlmSrtPath)) {
-                    companionCopyPath = layout.videoCompanionSubtitlePath;
-                    fs.copyFileSync(finalLlmSrtPath, companionCopyPath);
-                    logFn(`已将默认字幕复制到视频同级：${path.basename(companionCopyPath)}`);
-                }
-            } catch (e: any) {
-                logFn(`警告：未能将默认字幕复制到视频同级：${e.message || String(e)}`);
-            }
+            const exportResult = await this.subtitleExportService.export({
+                videoPath: task.videoPath,
+                outputDir: taskOutputDir,
+                whisperModel: taskModel,
+                whisperLanguage: taskLanguage,
+                optimizedSubtitlePath: finalLlmSrtPath,
+                translatedPaths,
+                existingBilingualAss: updatedTask.outputs.bilingualAss,
+                config: task.config,
+                logFn,
+            });
 
             this.taskStore.updateTask(taskId, {
                 status: 'completed',
@@ -214,8 +216,9 @@ export class PipelineRunner {
                 outputs: {
                     ...updatedTask.outputs,
                     translated: translatedPaths,
+                    bilingualAss: exportResult.bilingualAssPaths,
                     folder: taskOutputDir,
-                    finalSrt: layout.defaultSubtitlePath,
+                    finalSrt: exportResult.defaultSubtitlePath,
                 },
                 complianceHits: (updatedTask.complianceHits || 0) + translateHits,
             });

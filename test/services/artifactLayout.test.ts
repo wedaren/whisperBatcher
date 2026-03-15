@@ -18,6 +18,7 @@ describe('artifactLayout', () => {
         assert.equal(layout.optimizedSubtitlePath, '/tmp/demo clip.subtitle/02-optimized-subtitle.srt');
         assert.equal(layout.defaultSubtitlePath, '/tmp/demo clip.subtitle/03-default-subtitle.srt');
         assert.equal(layout.translatedPath('zh-CN'), '/tmp/demo clip.subtitle/04-translation.zh-CN.srt');
+        assert.equal(layout.bilingualAssPath('zh-CN'), '/tmp/demo clip.subtitle/05-bilingual.zh-CN.ass');
         assert.equal(layout.taskConfigPath, '/tmp/demo clip.subtitle/task-config.json');
         assert.equal(layout.taskLogPath, '/tmp/demo clip.subtitle/task-log.txt');
         assert.equal(layout.rawCachePath, '/tmp/demo clip.subtitle/cache/raw/whisper-large-v3.ja.srt');

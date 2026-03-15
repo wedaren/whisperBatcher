@@ -220,6 +220,7 @@ export class SubtitleFlowApiService implements SubtitleFlowApi {
             optimizedSubtitlePath: task.outputs.llm,
             rawSubtitlePath: task.outputs.raw,
             translatedPaths: { ...task.outputs.translated },
+            bilingualAssPaths: { ...(task.outputs.bilingualAss ?? {}) },
             logPath: task.outputs.log,
             configPath: task.outputs.config,
             review,
@@ -349,9 +350,9 @@ export class SubtitleFlowApiService implements SubtitleFlowApi {
         const logFn = this.logger.createTaskLogFn(videoPath, task.id, taskOutputDir);
         logFn(mode === 'queued' ? 'Task created and added to queue' : 'Task created for direct pipeline execution');
         logFn(`Video: ${videoPath}`);
-        if (options?.whisperModel || options?.whisperLanguage || options?.targetLanguages) {
+        if (options?.whisperModel || options?.whisperLanguage || options?.targetLanguages || options?.defaultSubtitleLanguage || options?.bilingualTargetLanguage) {
             logFn(
-                `Task Config: model=${options.whisperModel || 'global'}, lang=${options.whisperLanguage || 'global'}, langs=[${options.targetLanguages?.join(',') || 'global'}]`
+                `Task Config: model=${options.whisperModel || 'global'}, lang=${options.whisperLanguage || 'global'}, langs=[${options.targetLanguages?.join(',') || 'global'}], default=${options.defaultSubtitleLanguage || 'source'}, bilingual=${options.bilingualTargetLanguage || 'none'}`
             );
         }
 
@@ -410,6 +411,9 @@ export class SubtitleFlowApiService implements SubtitleFlowApi {
         return [
             task.outputs.finalSrt ? '默认字幕已生成。' : '默认字幕尚未生成。',
             translatedCount > 0 ? `翻译字幕 ${translatedCount} 份。` : '当前没有翻译字幕输出。',
+            task.outputs.bilingualAss && Object.keys(task.outputs.bilingualAss).length > 0
+                ? `双语 ASS ${Object.keys(task.outputs.bilingualAss).length} 份。`
+                : '当前没有双语 ASS 输出。',
             reviewHints.length > 0 ? `附加信息：${reviewHints.join('，')}。` : '当前没有额外复核工件。',
         ].join(' ');
     }

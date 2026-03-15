@@ -18,7 +18,7 @@ function task(partial: Partial<TaskSummary> & Pick<TaskSummary, 'id' | 'videoPat
         currentPhase: partial.status,
         updatedAt: partial.updatedAt ?? '2026-03-15T00:00:00.000Z',
         batchId: partial.batchId,
-        outputs: partial.outputs ?? { translated: {} },
+        outputs: partial.outputs ?? { translated: {}, bilingualAss: {} },
         config: partial.config,
         lastError: partial.lastError,
         complianceHits: partial.complianceHits,

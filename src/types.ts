@@ -27,6 +27,8 @@ export interface TaskOutputs {
     finalSrt?: string;
     /** 语言代码到翻译结果文件路径的映射。 */
     translated: Record<string, string>;
+    /** 语言代码到双语 ASS 结果文件路径的映射。 */
+    bilingualAss?: Record<string, string>;
 }
 
 /** 任务级配置覆写项。 */
@@ -34,6 +36,12 @@ export interface TaskConfig {
     whisperModel?: string;
     whisperLanguage?: string;
     targetLanguages?: string[];
+    /** 默认字幕目标：source 表示优化后的源语言字幕，否则为目标语言代码。 */
+    defaultSubtitleLanguage?: string;
+    /** 是否生成主双语 ASS。 */
+    generateBilingualAss?: boolean;
+    /** 主双语 ASS 的目标语言。 */
+    bilingualTargetLanguage?: string;
 }
 
 /** 持久化在 `tasks.json` 中的任务记录。 */

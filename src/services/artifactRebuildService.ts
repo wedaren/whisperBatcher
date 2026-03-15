@@ -94,10 +94,11 @@ export class ArtifactRebuildService {
 
     private collectPathsForStage(task: TaskRecord, stage: RebuildStage, layout: ReturnType<typeof buildArtifactLayout>): string[] {
         const translatedPaths = Object.values(task.outputs.translated ?? {});
+        const bilingualAssPaths = Object.values(task.outputs.bilingualAss ?? {});
         const reviewPaths = [layout.reviewSummaryPath, layout.manualReviewPath, layout.lexiconCandidatesPath];
 
         if (stage === 'translate') {
-            return [...translatedPaths, ...reviewPaths];
+            return [...translatedPaths, ...bilingualAssPaths, ...reviewPaths];
         }
 
         if (stage === 'optimize') {
@@ -105,6 +106,7 @@ export class ArtifactRebuildService {
                 layout.optimizedSubtitlePath,
                 layout.defaultSubtitlePath,
                 ...translatedPaths,
+                ...bilingualAssPaths,
                 ...reviewPaths,
             ];
         }
@@ -115,6 +117,7 @@ export class ArtifactRebuildService {
             layout.optimizedSubtitlePath,
             layout.defaultSubtitlePath,
             ...translatedPaths,
+            ...bilingualAssPaths,
             ...reviewPaths,
         ];
     }
@@ -124,6 +127,7 @@ export class ArtifactRebuildService {
             return {
                 ...outputs,
                 translated: {},
+                bilingualAss: {},
             };
         }
 
@@ -133,6 +137,7 @@ export class ArtifactRebuildService {
                 llm: undefined,
                 finalSrt: undefined,
                 translated: {},
+                bilingualAss: {},
             };
         }
 
@@ -142,6 +147,7 @@ export class ArtifactRebuildService {
             llm: undefined,
             finalSrt: undefined,
             translated: {},
+            bilingualAss: {},
         };
     }
 }

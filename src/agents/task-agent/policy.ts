@@ -1,7 +1,31 @@
 import type { SubtitleFlowApi, TaskSummary } from '../../publicApi';
 import { extractDirectoryPath, extractTaskId, extractVideoPath } from './parser';
 import { TASK_AGENT_TOOLS } from './tools';
-import type { TaskAgentIntent, TaskAgentWorkflow } from './types';
+import type { TaskAgentIntent, TaskAgentSubtitlePreference, TaskAgentWorkflow } from './types';
+
+function inferSubtitlePreference(prompt: string): TaskAgentSubtitlePreference {
+    const normalized = prompt.trim().toLowerCase();
+    if (/中文字幕|简中|zh-cn/i.test(normalized)) {
+        return {
+            targetLanguages: ['zh-CN'],
+            defaultSubtitleLanguage: 'zh-CN',
+            generateBilingualAss: true,
+            bilingualTargetLanguage: 'zh-CN',
+        };
+    }
+    if (/英文字幕|英语字幕|english subtitle|en subtitle/i.test(normalized)) {
+        return {
+            targetLanguages: ['en'],
+            defaultSubtitleLanguage: 'en',
+            generateBilingualAss: true,
+            bilingualTargetLanguage: 'en',
+        };
+    }
+    return {
+        defaultSubtitleLanguage: 'source',
+        generateBilingualAss: false,
+    };
+}
 
 function latestTask(tasks: TaskSummary[], predicate?: (task: TaskSummary) => boolean): TaskSummary | undefined {
     const filtered = predicate ? tasks.filter(predicate) : tasks;
@@ -48,19 +72,19 @@ export function parseTaskAgentIntent(command: string | undefined, prompt: string
     if (head === 'enqueue') {
         if (wantsDirectory) {
             const directoryPath = extractDirectoryPath(normalized);
-            return directoryPath ? { type: 'enqueueDirectory', directoryPath, autoStart: false, recursive: true } : { type: 'help' };
+            return directoryPath ? { type: 'enqueueDirectory', directoryPath, autoStart: false, recursive: true, ...inferSubtitlePreference(normalized) } : { type: 'help' };
         }
         const videoPath = extractVideoPath(normalized);
-        return videoPath ? { type: 'enqueue', videoPath, autoStart: false } : { type: 'help' };
+        return videoPath ? { type: 'enqueue', videoPath, autoStart: false, ...inferSubtitlePreference(normalized) } : { type: 'help' };
     }
     if (head === 'run' || head === 'start') {
         if (wantsDirectory) {
             const directoryPath = extractDirectoryPath(normalized);
-            return directoryPath ? { type: 'enqueueDirectory', directoryPath, autoStart: true, recursive: true } : { type: 'runPending' };
+            return directoryPath ? { type: 'enqueueDirectory', directoryPath, autoStart: true, recursive: true, ...inferSubtitlePreference(normalized) } : { type: 'runPending' };
         }
         const videoPath = extractVideoPath(normalized);
         if (videoPath) {
-            return { type: 'enqueue', videoPath, autoStart: true };
+            return { type: 'enqueue', videoPath, autoStart: true, ...inferSubtitlePreference(normalized) };
         }
         return { type: 'runPending' };
     }
@@ -95,6 +119,7 @@ export function inferTaskAgentIntent(
                 directoryPath,
                 autoStart: !/enqueue|queue|只创建|入队|排队/i.test(normalized),
                 recursive: /递归|所有子目录|recursive/i.test(normalized) || wantsDirectory,
+                ...inferSubtitlePreference(normalized),
             };
         }
     }
@@ -103,9 +128,9 @@ export function inferTaskAgentIntent(
         const match = extractVideoPath(normalized);
         if (match) {
             if (/enqueue|queue|只创建|入队|排队/i.test(normalized)) {
-                return { type: 'enqueue', videoPath: match, autoStart: false };
+                return { type: 'enqueue', videoPath: match, autoStart: false, ...inferSubtitlePreference(normalized) };
             }
-            return { type: 'enqueue', videoPath: match, autoStart: true };
+            return { type: 'enqueue', videoPath: match, autoStart: true, ...inferSubtitlePreference(normalized) };
         }
     }
     if (/最近批次|这批|batch/i.test(normalized)) {
@@ -207,7 +232,13 @@ export function buildTaskAgentWorkflow(intent: TaskAgentIntent, tasks: TaskSumma
         case 'enqueue':
             return {
                 steps: [
-                    { toolName: TASK_AGENT_TOOLS.enqueueTask, input: { videoPath: intent.videoPath }, summary: `正在为 ${intent.videoPath} 创建后台任务` },
+                    { toolName: TASK_AGENT_TOOLS.enqueueTask, input: {
+                        videoPath: intent.videoPath,
+                        targetLanguages: intent.targetLanguages,
+                        defaultSubtitleLanguage: intent.defaultSubtitleLanguage,
+                        generateBilingualAss: intent.generateBilingualAss,
+                        bilingualTargetLanguage: intent.bilingualTargetLanguage,
+                    }, summary: `正在为 ${intent.videoPath} 创建后台任务` },
                     ...(intent.autoStart ? [{ toolName: TASK_AGENT_TOOLS.runPending, input: {}, summary: '正在尝试启动后台队列' }] : []),
                 ],
                 inspectTaskAfterStep: intent.autoStart ? 1 : 0,
@@ -228,6 +259,10 @@ export function buildTaskAgentWorkflow(intent: TaskAgentIntent, tasks: TaskSumma
                         toolName: TASK_AGENT_TOOLS.enqueueTasks,
                         buildInput: (state) => ({
                             inputs: (state.scanDirectory?.videos ?? []).map((videoPath) => ({ videoPath })),
+                            targetLanguages: intent.targetLanguages,
+                            defaultSubtitleLanguage: intent.defaultSubtitleLanguage,
+                            generateBilingualAss: intent.generateBilingualAss,
+                            bilingualTargetLanguage: intent.bilingualTargetLanguage,
                         }),
                         summary: '正在为目录中的视频批量创建后台任务',
                         storeResultAs: 'enqueueTasks',

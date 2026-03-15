@@ -97,6 +97,7 @@ const TASK_RESULT_SUMMARY_SCHEMA: JsonSchema = {
         optimizedSubtitlePath: { type: 'string' },
         rawSubtitlePath: { type: 'string' },
         translatedPaths: { type: 'object' },
+        bilingualAssPaths: { type: 'object' },
         logPath: { type: 'string' },
         configPath: { type: 'string' },
         review: { type: 'object' },

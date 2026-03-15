@@ -63,6 +63,7 @@ export interface TaskResultSummary {
     optimizedSubtitlePath?: string;
     rawSubtitlePath?: string;
     translatedPaths: Record<string, string>;
+    bilingualAssPaths?: Record<string, string>;
     logPath?: string;
     configPath?: string;
     review: ReviewSummary;
@@ -250,6 +251,7 @@ export function toTaskSummary(task: TaskRecord): TaskSummary {
         outputs: {
             ...task.outputs,
             translated: { ...task.outputs.translated },
+            bilingualAss: { ...(task.outputs.bilingualAss ?? {}) },
         },
         config: task.config ? { ...task.config } : undefined,
         lastError: task.lastError,

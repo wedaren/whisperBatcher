@@ -68,7 +68,7 @@ export class TaskStore {
             currentPhase: 'queued',
             updatedAt: now,
             batchId: metadata?.batchId,
-            outputs: { translated: {} },
+            outputs: { translated: {}, bilingualAss: {} },
             config: config
         };
         this.tasks.set(record.id, record);
@@ -146,6 +146,14 @@ export class TaskStore {
             if (task.outputs.config && !fs.existsSync(task.outputs.config)) {
                 task.outputs.config = undefined;
                 changed = true;
+            }
+            if (task.outputs.bilingualAss) {
+                for (const [lang, filePath] of Object.entries(task.outputs.bilingualAss)) {
+                    if (!fs.existsSync(filePath)) {
+                        delete task.outputs.bilingualAss[lang];
+                        changed = true;
+                    }
+                }
             }
             for (const [lang, filePath] of Object.entries(task.outputs.translated)) {
                 if (!fs.existsSync(filePath)) {

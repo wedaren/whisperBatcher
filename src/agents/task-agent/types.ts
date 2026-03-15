@@ -1,5 +1,12 @@
 import type { BatchSummary, TaskResultSummary, TaskSummary } from '../../publicApi';
 
+export interface TaskAgentSubtitlePreference {
+    targetLanguages?: string[];
+    defaultSubtitleLanguage?: string;
+    generateBilingualAss?: boolean;
+    bilingualTargetLanguage?: string;
+}
+
 export type TaskAgentIntent =
     | { type: 'help' }
     | { type: 'list' }
@@ -11,8 +18,8 @@ export type TaskAgentIntent =
     | { type: 'resume'; taskId: string }
     | { type: 'retry'; taskId: string }
     | { type: 'delete'; taskId: string }
-    | { type: 'enqueue'; videoPath: string; autoStart: boolean }
-    | { type: 'enqueueDirectory'; directoryPath: string; autoStart: boolean; recursive: boolean }
+    | ({ type: 'enqueue'; videoPath: string; autoStart: boolean } & TaskAgentSubtitlePreference)
+    | ({ type: 'enqueueDirectory'; directoryPath: string; autoStart: boolean; recursive: boolean } & TaskAgentSubtitlePreference)
     | { type: 'runPending' };
 
 export interface TaskAgentPlannerState {

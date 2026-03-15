@@ -21,7 +21,7 @@ function task(partial: Partial<TaskSummary> & Pick<TaskSummary, 'id' | 'videoPat
         currentPhase: partial.status,
         updatedAt: partial.updatedAt ?? '2026-03-15T00:00:00.000Z',
         batchId: partial.batchId,
-        outputs: partial.outputs ?? { translated: {} },
+        outputs: partial.outputs ?? { translated: {}, bilingualAss: {} },
         config: partial.config,
         lastError: partial.lastError,
         complianceHits: partial.complianceHits,
@@ -35,6 +35,8 @@ describe('task-agent policy', () => {
             type: 'enqueue',
             videoPath: '/tmp/demo.mp4',
             autoStart: false,
+            defaultSubtitleLanguage: 'source',
+            generateBilingualAss: false,
         });
     });
 
@@ -71,6 +73,25 @@ describe('task-agent policy', () => {
             directoryPath: '/tmp/videos',
             autoStart: true,
             recursive: true,
+            defaultSubtitleLanguage: 'source',
+            generateBilingualAss: false,
+        });
+    });
+
+    it('should infer translated default subtitle and bilingual ass for Chinese subtitle requests', () => {
+        const intent = inferTaskAgentIntent(
+            '给 /tmp/demo.mp4 生成中文字幕',
+            [],
+            { type: 'help' }
+        );
+        assert.deepEqual(intent, {
+            type: 'enqueue',
+            videoPath: '/tmp/demo.mp4',
+            autoStart: true,
+            targetLanguages: ['zh-CN'],
+            defaultSubtitleLanguage: 'zh-CN',
+            generateBilingualAss: true,
+            bilingualTargetLanguage: 'zh-CN',
         });
     });
 

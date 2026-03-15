@@ -206,6 +206,7 @@ export class ArtifactMigrationService {
                 config: fs.existsSync(layout.taskConfigPath) ? layout.taskConfigPath : task.outputs.config,
                 log: fs.existsSync(layout.taskLogPath) ? layout.taskLogPath : task.outputs.log,
                 translated: updatedTranslated,
+                bilingualAss: { ...(task.outputs.bilingualAss ?? {}) },
             },
         });
 
