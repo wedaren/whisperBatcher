@@ -17,20 +17,33 @@
    - [src/commands.ts](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/commands.ts)
    - [src/copilot/tools.ts](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/copilot/tools.ts)
    - [src/copilot/participant.ts](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/copilot/participant.ts)
-   - [src/copilot/participantParser.ts](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/copilot/participantParser.ts)
-   - 负责 UI 命令和 Copilot agent 交互
+   - 负责 UI 命令和 Copilot agent 适配
 4. 状态与调度层
    - [src/taskStore.ts](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/taskStore.ts)
    - [src/services/taskScheduler.ts](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/services/taskScheduler.ts)
    - 负责任务持久化、状态切换、并发调度
-5. 核心流水线层
+5. Agent 编排层
+   - [src/agents/task-agent/README.md](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/agents/task-agent/README.md)
+   - [src/agents/task-agent/parser.ts](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/agents/task-agent/parser.ts)
+   - [src/agents/execution-agent/README.md](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/agents/execution-agent/README.md)
+   - [src/agents/review-agent/README.md](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/agents/review-agent/README.md)
+   - [src/agents/orchestrator/README.md](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/agents/orchestrator/README.md)
+   - [src/agents/runtime/README.md](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/agents/runtime/README.md)
+   - 负责任务交互、执行策略、失败审查和 handoff
+6. Agent Host 层
+   - [src/agent-host/README.md](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/agent-host/README.md)
+   - 负责把内部 agent 能力整理成插件级 capability，供外部插件或外部 agent 调用
+7. Registry 层
+   - [src/subtitleFlowRegistry.ts](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/subtitleFlowRegistry.ts)
+   - 统一暴露 agent / participant / tool / capability 清单
+   - 并作为构建期生成 `package.json` 受管字段的唯一来源
+8. 核心流水线层
    - [src/services/pipelineRunner.ts](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/services/pipelineRunner.ts)
    - [src/services/whisperService.ts](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/services/whisperService.ts)
    - [src/services/optimizeService.ts](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/services/optimizeService.ts)
    - [src/services/translateService.ts](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/services/translateService.ts)
-   - [src/services/llmRecoveryAgent.ts](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/services/llmRecoveryAgent.ts)
    - 负责真正的字幕处理
-6. 辅助基础设施层
+9. 辅助基础设施层
    - [src/services/llmClient.ts](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/services/llmClient.ts)
    - [src/services/complianceService.ts](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/services/complianceService.ts)
    - [src/services/logger.ts](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/services/logger.ts)
@@ -53,13 +66,26 @@
 - `PipelineRunner`
   - 对单个任务串起三阶段处理
   - 持续把阶段状态和产物回写到 `TaskStore`
-- `LlmRecoveryAgent`
+- `ExecutionAgent`
   - 为 optimize / translate 提供受控恢复策略
   - 遇到拒答、格式错、疑似未翻译时，不直接终止，而是切换 prompt 或降级
+- `TaskAgent`
+  - 负责 Copilot Chat 里的任务意图理解与工作流编排
+  - 通过 runtime 调用任务控制工具
 - `ReviewAgent`
   - 只分析最终失败块
   - 输出 `manual-review.json` 与 `lexicon-candidates.json`
   - 不参与主链路重试，也不自动写入正式词典
+- `AgentOrchestrator`
+  - 是 agent handoff 的唯一入口
+  - 避免 agent 之间直接互调
+- `AgentRuntime`
+  - 封装 VS Code 工具调用和响应输出
+  - 为 task-agent 提供统一运行时上下文
+- `SubtitleFlowAgentHost`
+  - 作为插件级 agent 能力入口
+  - 对外暴露 capability，而不是内部 agent 类
+  - 每个 capability 同时带结构化 schema 和摘要文案
 - `TaskTreeDataProvider`
   - 订阅 `TaskStore` 变化
   - 将任务和输出文件渲染到侧边栏树视图

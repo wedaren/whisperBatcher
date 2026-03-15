@@ -1,6 +1,7 @@
 import * as path from 'path';
+import * as fs from 'fs/promises';
 import * as vscode from 'vscode';
-import { OUTPUT_FOLDER_SUFFIX } from '../constants';
+import { OUTPUT_FOLDER_SUFFIX, VIDEO_EXTENSIONS } from '../constants';
 import type { TaskRecord } from '../types';
 import { TaskStore } from '../taskStore';
 import { PipelineRunner } from './pipelineRunner';
@@ -17,6 +18,8 @@ import {
     type OptimizeResult,
     type PipelineResult,
     type RunPipelineOptions,
+    type ScanDirectoryOptions,
+    type ScanDirectoryResult,
     type SubtitleFlowApi,
     type TaskSummary,
     type TranscribeOptions,
@@ -56,6 +59,38 @@ export class SubtitleFlowApiService implements SubtitleFlowApi {
             tasks.push(await this.enqueueTask(input, options));
         }
         return tasks;
+    }
+
+    async scanDirectory(directoryPath: string, options?: ScanDirectoryOptions): Promise<ScanDirectoryResult> {
+        const maxFiles = Math.max(1, options?.maxFiles ?? 100);
+        const videos: string[] = [];
+        const recursive = options?.recursive ?? false;
+
+        const walk = async (currentPath: string): Promise<void> => {
+            const entries = await fs.readdir(currentPath, { withFileTypes: true });
+            for (const entry of entries) {
+                if (videos.length >= maxFiles) {
+                    return;
+                }
+                const fullPath = path.join(currentPath, entry.name);
+                if (entry.isDirectory()) {
+                    if (recursive) {
+                        await walk(fullPath);
+                    }
+                    continue;
+                }
+                if (entry.isFile() && VIDEO_EXTENSIONS.includes(path.extname(entry.name).slice(1).toLowerCase())) {
+                    videos.push(fullPath);
+                }
+            }
+        };
+
+        await walk(directoryPath);
+        return {
+            directoryPath,
+            videos,
+            truncated: videos.length >= maxFiles,
+        };
     }
 
     runPending(): void {

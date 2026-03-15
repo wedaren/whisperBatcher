@@ -20,15 +20,17 @@ import { TaskScheduler } from './services/taskScheduler';
 import { TaskTreeDataProvider } from './views/taskTreeProvider';
 import { Logger } from './services/logger';
 import { registerCommands } from './commands';
-import { SubtitleFlowApi } from './publicApi';
+import { SubtitleFlowExtensionExports } from './publicApi';
 import { SubtitleFlowApiService } from './services/subtitleFlowApi';
 import { registerSubtitleFlowTools } from './copilot/tools';
 import { registerSubtitleFlowParticipant } from './copilot/participant';
+import { SubtitleFlowAgentHostService, SubtitleFlowExtensionExportsService } from './agent-host';
+import { SUBTITLE_FLOW_AGENT_MANIFESTS } from './subtitleFlowRegistry';
 
 let scheduler: TaskScheduler | undefined;
 let logger: Logger | undefined;
 
-export async function activate(context: vscode.ExtensionContext): Promise<SubtitleFlowApi> {
+export async function activate(context: vscode.ExtensionContext): Promise<SubtitleFlowExtensionExports> {
     // ── 0. 最先创建日志器，便于后续初始化过程全部可追踪 ──
     logger = new Logger();
     logger.info('Subtitle Flow extension activating...');
@@ -70,6 +72,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<Subtit
         logger,
         context.extensionPath
     );
+    const agentHost = new SubtitleFlowAgentHostService(api, SUBTITLE_FLOW_AGENT_MANIFESTS);
+    const extensionExports = new SubtitleFlowExtensionExportsService(api, agentHost);
     logger.info('All services created.');
 
     // ── 3. 注册任务树视图 ──
@@ -90,7 +94,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Subtit
     context.subscriptions.push(treeView, treeProvider, taskStore, scheduler, logger);
 
     logger.info('Subtitle Flow extension activated successfully ✅');
-    return api;
+    return extensionExports;
 }
 
 export function deactivate() {

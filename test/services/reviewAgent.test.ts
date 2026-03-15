@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { ReviewAgent } from '../../src/services/reviewAgent';
+import { ReviewAgent } from '../../src/agents/review-agent';
 
 describe('ReviewAgent', () => {
     let tmpDir: string;

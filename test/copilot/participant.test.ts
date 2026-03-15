@@ -39,6 +39,16 @@ function createApi(tasks: TaskSummary[]): SubtitleFlowApi {
         async enqueueTasks(inputs) {
             return Promise.all(inputs.map((input) => this.enqueueTask(input)));
         },
+        async scanDirectory(directoryPath) {
+            return {
+                directoryPath,
+                videos: [
+                    `${directoryPath}/part001.mp4`,
+                    `${directoryPath}/part002.mp4`,
+                ],
+                truncated: false,
+            };
+        },
         runPending() {},
         getTask(taskId) {
             return allTasks.find((item) => item.id === taskId);
@@ -229,6 +239,67 @@ describe('createSubtitleFlowParticipantHandler', () => {
         );
         assert.equal(
             stream.markdownMessages.some((message: string) => message.includes('失败任务已经重新入队')),
+            true
+        );
+    });
+
+    it('should orchestrate scanDirectory -> enqueueTasks -> runPending -> list for directory requests', async () => {
+        const api = createApi([]);
+        const directoryPath = '/tmp/demo folder';
+
+        const registeredTools = new Map<string, any>([
+            [SUBTITLE_FLOW_TOOL_NAMES.scanDirectory, {
+                invoke: async (options: any) => new vscode.LanguageModelToolResult([
+                    new vscode.LanguageModelTextPart(JSON.stringify(await api.scanDirectory(options.input.directoryPath))),
+                ]),
+            }],
+            [SUBTITLE_FLOW_TOOL_NAMES.enqueueTasks, {
+                invoke: async (options: any) => new vscode.LanguageModelToolResult([
+                    new vscode.LanguageModelTextPart(JSON.stringify(await api.enqueueTasks(options.input.inputs))),
+                ]),
+            }],
+            [SUBTITLE_FLOW_TOOL_NAMES.runPending, {
+                invoke: async () => new vscode.LanguageModelToolResult([
+                    new vscode.LanguageModelTextPart(JSON.stringify({ ok: true })),
+                ]),
+            }],
+            [SUBTITLE_FLOW_TOOL_NAMES.listTasks, {
+                invoke: async () => new vscode.LanguageModelToolResult([
+                    new vscode.LanguageModelTextPart(JSON.stringify(api.listTasks())),
+                ]),
+            }],
+        ]);
+
+        for (const [name, tool] of registeredTools) {
+            vscodeTesting.__testing.registeredTools.set(name, tool);
+        }
+
+        const handler = createSubtitleFlowParticipantHandler(api);
+        const stream = createStream();
+
+        await handler(
+            {
+                prompt: `为目录 "${directoryPath}" 下的所有视频提供字幕`,
+                command: undefined,
+                toolInvocationToken: undefined,
+            } as any,
+            {} as any,
+            stream as any,
+            vscodeTesting.CancellationToken.None
+        );
+
+        assert.deepEqual(
+            vscodeTesting.__testing.toolInvocations.map((item: any) => item.name),
+            [
+                SUBTITLE_FLOW_TOOL_NAMES.scanDirectory,
+                SUBTITLE_FLOW_TOOL_NAMES.enqueueTasks,
+                SUBTITLE_FLOW_TOOL_NAMES.runPending,
+                SUBTITLE_FLOW_TOOL_NAMES.listTasks,
+            ]
+        );
+        assert.equal(vscodeTesting.__testing.toolInvocations[0].options.input.recursive, true);
+        assert.equal(
+            stream.markdownMessages.some((message: string) => message.includes('目录中的视频已批量入队')),
             true
         );
     });

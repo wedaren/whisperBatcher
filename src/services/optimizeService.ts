@@ -18,15 +18,15 @@ import {
 import { SrtEntry } from '../types';
 import { OPTIMIZE_CHUNK_SIZE, OPTIMIZE_OVERLAP } from '../constants';
 import { parseNumberedResponse, isRefusal, writeDebugDump, buildNumberedPrompt, SanitizeEntry } from './llmUtils';
-import { LlmRecoveryAgent, type PromptVariant, type RecoveryFailureKind } from './llmRecoveryAgent';
-import { ReviewAgent } from './reviewAgent';
+import { AgentOrchestrator } from '../agents/orchestrator';
+import { buildOptimizeSystemPrompt, ExecutionAgent, type PromptVariant, type RecoveryFailureKind } from '../agents/execution-agent';
 
 export class OptimizeService {
     constructor(
         private llmClient: LLMClient,
         private compliance: ComplianceService,
-        private recoveryAgent: LlmRecoveryAgent = new LlmRecoveryAgent(),
-        private reviewAgent: ReviewAgent = new ReviewAgent()
+        private executionAgent: ExecutionAgent = new ExecutionAgent(),
+        private orchestrator: AgentOrchestrator = new AgentOrchestrator()
     ) { }
 
     /**
@@ -98,7 +98,7 @@ export class OptimizeService {
                     const response = await this.llmClient.chat([
                         {
                             role: 'system',
-                            content: this.buildOptimizeSystemPrompt(promptVariant),
+                            content: buildOptimizeSystemPrompt(promptVariant),
                         },
                         { role: 'user', content: numberedLines },
                     ], { signal: options?.signal });
@@ -115,7 +115,7 @@ export class OptimizeService {
                         promptVariant,
                         attempt,
                     });
-                    const decision = this.recoveryAgent.decide('optimize', { attempt, chunkSize: currentChunkSize, promptVariant, failures }, failure);
+                    const decision = this.executionAgent.decide('optimize', { attempt, chunkSize: currentChunkSize, promptVariant, failures }, failure);
                     log(`优化：块 ${i + 1}/${chunks.length} LLM 调用失败，恢复策略=${decision.reason}`);
                     if (!decision.shouldRetry) {
                         break;
@@ -148,19 +148,24 @@ export class OptimizeService {
                         attempt,
                     });
                 }
-                const decision = this.recoveryAgent.decide('optimize', { attempt, chunkSize: currentChunkSize, promptVariant, failures }, failure);
-                log(`优化：块 ${i + 1}/${chunks.length} 检测到 ${failure}，恢复策略=${decision.reason}`);
-                if (!decision.shouldRetry) {
-                    this.reviewAgent.recordFailure(path.dirname(rawSrtPath), {
+                const decision = this.orchestrator.handleFailure(
+                    path.dirname(rawSrtPath),
+                    'optimize',
+                    { attempt, chunkSize: currentChunkSize, promptVariant, failures },
+                    failure,
+                    {
                         stage: 'optimize',
                         chunkIndex: i + 1,
                         chunkEntries,
                         sanitizedTexts,
                         failure,
                         promptVariant,
-                        fallbackMode: decision.fallbackMode,
-                        reason: decision.reason,
-                    });
+                        fallbackMode: 'sanitized_source',
+                        reason: '',
+                    }
+                );
+                log(`优化：块 ${i + 1}/${chunks.length} 检测到 ${failure}，恢复策略=${decision.reason}`);
+                if (!decision.shouldRetry) {
                     resultTexts = [...sanitizedTexts];
                     break;
                 }
@@ -238,16 +243,6 @@ export class OptimizeService {
             /do not add any explanation/i,
         ];
         return leakPatterns.some((p) => p.test(text));
-    }
-
-    private buildOptimizeSystemPrompt(variant: PromptVariant): string {
-        if (variant === 'reduced_risk') {
-            return 'Edit subtitle lines for readability. Return only numbered edited lines like [1], [2]. Keep placeholders unchanged. Avoid explanations or risky elaboration.';
-        }
-        if (variant === 'strict_format') {
-            return 'Rewrite each subtitle line for readability. Output exactly one numbered line per input line. Preserve numbering and placeholders. No extra text.';
-        }
-        return 'You are a subtitle editor. Optimize the following subtitle lines for readability. Fix grammar, punctuation, and make text natural while preserving the original meaning. Output ONLY the optimized lines, one per line, prefixed with their number like [1], [2], etc. Keep the exact same number of lines. Do not add any explanations.';
     }
 
 }

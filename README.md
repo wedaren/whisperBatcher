@@ -42,6 +42,8 @@ Whisper 转录可能持续较长时间，因此 Copilot agent 不采用“单次
 
 - “生成字幕 /abs/video.mp4”
   - 自动执行 `enqueue -> runPending -> get`
+- “为目录 /abs/folder 下的所有视频提供字幕”
+  - 自动执行 `scanDirectory -> enqueueTasks -> runPending -> list`
 - “重试失败任务”
   - 自动执行 `retry -> runPending -> get`
 - “恢复刚才暂停的任务”
@@ -79,6 +81,17 @@ Whisper 转录可能持续较长时间，因此 Copilot agent 不采用“单次
 
 默认情况下，拒答后不会再额外发起一次在线 LLM 分析请求，避免主流程被重复拒答和额外耗时拖慢。
 
+## Agent 目录
+
+当前 agent 已拆成独立目录，便于后续分别演化 prompt、tools 和说明：
+
+- [task-agent](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/agents/task-agent/README.md)
+- [execution-agent](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/agents/execution-agent/README.md)
+- [review-agent](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/agents/review-agent/README.md)
+- [orchestrator](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/agents/orchestrator/README.md)
+- [runtime](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/agents/runtime/README.md)
+- [agent-host](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/agent-host/README.md)
+
 ## 依赖要求
 
 - VS Code `1.109.0` 或更高版本
@@ -111,6 +124,13 @@ Whisper 转录可能持续较长时间，因此 Copilot agent 不采用“单次
 - 架构文档：[docs/architecture.md](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/docs/architecture.md)
 - 原理文档：[docs/principles.md](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/docs/principles.md)
 - 对外接入文档：[docs/developer-api.md](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/docs/developer-api.md)
+
+## 构建约束
+
+- `package.json` 中的 `chatParticipants`、`languageModelTools` 和相关 `activationEvents`
+  - 现在由 [subtitleFlowRegistry.ts](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/subtitleFlowRegistry.ts:1) 驱动
+  - 构建前会通过 [sync_package_manifest.js](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/scripts/sync_package_manifest.js:1) 自动同步
+  - 不应再手工修改这些受管字段
 
 ## 当前状态
 

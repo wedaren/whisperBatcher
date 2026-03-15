@@ -78,6 +78,59 @@ export interface PipelineResult {
     task: TaskSummary;
 }
 
+export interface ScanDirectoryOptions {
+    recursive?: boolean;
+    maxFiles?: number;
+}
+
+export interface ScanDirectoryResult {
+    directoryPath: string;
+    videos: string[];
+    truncated: boolean;
+}
+
+/**
+ * 简化版 JSON Schema 结构。
+ * 当前用于描述 agent capability 和 Copilot tool 的输入输出，不引入额外运行时依赖。
+ */
+export interface JsonSchema {
+    type?: string;
+    properties?: Record<string, JsonSchema>;
+    items?: JsonSchema;
+    required?: string[];
+    enum?: string[];
+    description?: string;
+    additionalProperties?: boolean;
+}
+
+/**
+ * Agent 能力的稳定描述。
+ * 外部插件只依赖这些描述和 `invokeCapability`，不直接触碰内部 agent 实现。
+ */
+export interface AgentCapabilityManifest {
+    name: string;
+    agent: string;
+    description: string;
+    inputSchema?: JsonSchema;
+    outputSchema?: JsonSchema;
+    inputSchemaSummary: string;
+    outputSchemaSummary: string;
+}
+
+/**
+ * 单个 agent 的自描述信息。
+ * 这里不暴露运行时实现，仅用于说明职责和可调用能力。
+ */
+export interface AgentManifest {
+    name: string;
+    description: string;
+    responsibilities: string[];
+    tools: string[];
+    capabilityNames: string[];
+    inputSchemaSummary?: string;
+    outputSchemaSummary?: string;
+}
+
 /**
  * 对外能力的唯一稳定门面。
  * 现有命令、Copilot agent、未来其他 VS Code 扩展都应该只依赖这一层。
@@ -85,6 +138,7 @@ export interface PipelineResult {
 export interface SubtitleFlowApi {
     enqueueTask(input: EnqueueTaskInput, options?: EnqueueTaskOptions): Promise<TaskSummary>;
     enqueueTasks(inputs: EnqueueTaskInput[], options?: EnqueueTaskOptions): Promise<TaskSummary[]>;
+    scanDirectory(directoryPath: string, options?: ScanDirectoryOptions): Promise<ScanDirectoryResult>;
     runPending(): void;
     getTask(taskId: string): TaskSummary | undefined;
     listTasks(): TaskSummary[];
@@ -98,6 +152,24 @@ export interface SubtitleFlowApi {
     optimize(rawSrtPath: string, options?: OptimizeOptions): Promise<OptimizeResult>;
     translate(llmSrtPath: string, targetLanguages: string[], options?: TranslateOptions): Promise<TranslateResult>;
     runPipeline(videoPath: string, options?: RunPipelineOptions): Promise<PipelineResult>;
+}
+
+/**
+ * 插件级 Agent Host。
+ * 外部扩展或外部 agent 通过它发现和调用字幕能力，而不是直接依赖内部 agent 类。
+ */
+export interface SubtitleFlowAgentHost {
+    listAgents(): AgentManifest[];
+    listCapabilities(): AgentCapabilityManifest[];
+    invokeCapability(name: string, input?: Record<string, unknown>): Promise<unknown>;
+}
+
+/**
+ * 扩展对外 exports。
+ * 保留原有 API 方法，另外补充 `agentHost` 供程序化 agent 集成。
+ */
+export interface SubtitleFlowExtensionExports extends SubtitleFlowApi {
+    agentHost: SubtitleFlowAgentHost;
 }
 
 /**

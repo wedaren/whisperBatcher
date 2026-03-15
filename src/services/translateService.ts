@@ -18,15 +18,15 @@ import {
 import { SrtEntry } from '../types';
 import { TRANSLATE_CHUNK_SIZE, TRANSLATE_OVERLAP, SIMILARITY_THRESHOLD, UNTRANSLATED_LINE_RATIO, ENGLISH_DETECTION_RATIO, LANG_NAMES } from '../constants';
 import { parseNumberedResponse, isRefusal, writeDebugDump, buildNumberedPrompt, SanitizeEntry } from './llmUtils';
-import { LlmRecoveryAgent, type PromptVariant, type RecoveryFailureKind } from './llmRecoveryAgent';
-import { ReviewAgent } from './reviewAgent';
+import { AgentOrchestrator } from '../agents/orchestrator';
+import { buildTranslateSystemPrompt, ExecutionAgent, type PromptVariant, type RecoveryFailureKind } from '../agents/execution-agent';
 
 export class TranslateService {
     constructor(
         private llmClient: LLMClient,
         private compliance: ComplianceService,
-        private recoveryAgent: LlmRecoveryAgent = new LlmRecoveryAgent(),
-        private reviewAgent: ReviewAgent = new ReviewAgent()
+        private executionAgent: ExecutionAgent = new ExecutionAgent(),
+        private orchestrator: AgentOrchestrator = new AgentOrchestrator()
     ) { }
 
     /**
@@ -122,7 +122,7 @@ export class TranslateService {
                     const response = await this.llmClient.chat([
                         {
                             role: 'system',
-                            content: this.buildTranslateSystemPrompt(langName, promptVariant),
+                            content: buildTranslateSystemPrompt(langName, promptVariant),
                         },
                         { role: 'user', content: numberedLines },
                     ], { signal: options?.signal });
@@ -139,7 +139,7 @@ export class TranslateService {
                         promptVariant,
                         attempt,
                     });
-                    const decision = this.recoveryAgent.decide('translate', { attempt, chunkSize: currentChunkSize, promptVariant, failures }, failure);
+                    const decision = this.executionAgent.decide('translate', { attempt, chunkSize: currentChunkSize, promptVariant, failures }, failure);
                     log(`Translate [${targetLang}]: 块 ${i + 1}/${chunks.length} LLM 调用失败，恢复策略=${decision.reason}`);
                     if (!decision.shouldRetry) {
                         break;
@@ -191,20 +191,25 @@ export class TranslateService {
                         attempt,
                     });
                 }
-                const decision = this.recoveryAgent.decide('translate', { attempt, chunkSize: currentChunkSize, promptVariant, failures }, failure);
-                log(`Translate [${targetLang}]: 块 ${i + 1}/${chunks.length} 检测到 ${failure}，恢复策略=${decision.reason}`);
-                if (!decision.shouldRetry) {
-                    this.reviewAgent.recordFailure(options?.outputDir ?? path.dirname(llmSrtPath), {
+                const decision = this.orchestrator.handleFailure(
+                    options?.outputDir ?? path.dirname(llmSrtPath),
+                    'translate',
+                    { attempt, chunkSize: currentChunkSize, promptVariant, failures },
+                    failure,
+                    {
                         stage: 'translate',
                         chunkIndex: i + 1,
                         chunkEntries,
                         sanitizedTexts,
                         failure,
                         promptVariant,
-                        fallbackMode: decision.fallbackMode,
-                        reason: decision.reason,
+                        fallbackMode: 'sanitized_source',
+                        reason: '',
                         targetLang,
-                    });
+                    }
+                );
+                log(`Translate [${targetLang}]: 块 ${i + 1}/${chunks.length} 检测到 ${failure}，恢复策略=${decision.reason}`);
+                if (!decision.shouldRetry) {
                     resultTexts = [...sanitizedTexts];
                     break;
                 }
@@ -350,16 +355,6 @@ export class TranslateService {
             /do not add explanation/i,
         ];
         return leakPatterns.some((p) => p.test(text));
-    }
-
-    private buildTranslateSystemPrompt(langName: string, variant: PromptVariant): string {
-        if (variant === 'reduced_risk') {
-            return `You translate subtitle lines into ${langName}. Return only numbered translated lines like [1], [2]. Keep placeholders such as __COMPLIANCE_N__ unchanged. Do not add explanations, comments, or unsafe elaboration.`;
-        }
-        if (variant === 'strict_format') {
-            return `Translate each subtitle line to ${langName}. Output exactly one numbered line for each input line, preserving numbering and placeholders. No extra text.`;
-        }
-        return `You are a professional subtitle translator. Translate the following subtitle lines to ${langName}. Output ONLY the translated lines, one per line, prefixed with their number like [1], [2], etc. Keep the exact same number of lines. Preserve any placeholders (like __COMPLIANCE_N__) as-is. Do not add explanations or notes.`;
     }
 
     private finalizeTranslateOutput(llmSrtPath: string, targetLang: string, translatedEntries: SrtEntry[], totalHits: number, options?: { outputDir?: string }) {

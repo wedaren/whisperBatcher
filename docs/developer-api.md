@@ -6,6 +6,7 @@
 
 1. `exports API`
    - 供其他 VS Code 插件直接调用
+   - 同时暴露稳定 `SubtitleFlowApi` 和插件级 `agentHost`
 2. `Copilot agent`
    - 供用户在 Chat 面板里通过 `@subtitleFlow` 调用
 
@@ -24,23 +25,25 @@
 
 ```ts
 import * as vscode from 'vscode';
-import type { SubtitleFlowApi } from 'whisper-subtitle-flow/dist/publicApi';
+import type { SubtitleFlowExtensionExports } from 'whisper-subtitle-flow/dist/publicApi';
 
 async function useSubtitleFlow(): Promise<void> {
-    const extension = vscode.extensions.getExtension<SubtitleFlowApi>('wedaren.whisper-subtitle-flow');
+    const extension = vscode.extensions.getExtension<SubtitleFlowExtensionExports>('wedaren.whisper-subtitle-flow');
     if (!extension) {
         throw new Error('Subtitle Flow extension not found');
     }
 
-    const api = extension.isActive ? extension.exports : await extension.activate();
+    const subtitleFlow = extension.isActive ? extension.exports : await extension.activate();
 
-    const task = await api.enqueueTask(
+    const task = await subtitleFlow.enqueueTask(
         { videoPath: '/absolute/path/demo.mp4' },
         { targetLanguages: ['zh-CN', 'en'] }
     );
 
-    api.runPending();
+    subtitleFlow.runPending();
     console.log(task.id);
+
+    console.log(subtitleFlow.agentHost.listCapabilities().map((item) => item.name));
 }
 ```
 
@@ -66,6 +69,40 @@ async function useSubtitleFlow(): Promise<void> {
 - `optimize(rawSrtPath, options?)`
 - `translate(llmSrtPath, targetLanguages, options?)`
 - `runPipeline(videoPath, options?)`
+
+## Agent Host
+
+如果你是从其他插件里的其他 agent 调用本扩展，优先通过 `agentHost` 发现能力：
+
+- `listAgents()`
+- `listCapabilities()`
+- `invokeCapability(name, input?)`
+
+`listCapabilities()` 现在会同时返回：
+
+- `inputSchema`
+- `outputSchema`
+- `inputSchemaSummary`
+- `outputSchemaSummary`
+
+也就是外部插件既可以做结构化校验，也可以直接拿摘要文案做展示。
+
+当前关键 capability：
+
+- `task.scan-directory`
+- `task.enqueue`
+- `task.enqueue-batch`
+- `task.enqueue-directory`
+- `task.run-pending`
+- `task.get`
+- `task.list`
+- `task.pause`
+- `task.resume`
+- `task.retry`
+- `task.delete`
+- `subtitle.optimize`
+- `subtitle.translate`
+- `review.inspect-failures`
 
 ## 返回值约定
 
@@ -106,6 +143,7 @@ Whisper 转录可能持续较长时间，因此推荐外部调用方遵守下面
    - 例如“查看最近任务状态”
    - 例如“恢复刚才暂停的任务”
    - 例如“给这个路径生成字幕”
+   - 例如“为目录 `/path/to/folder` 下的所有视频提供字幕”
 
 ## 与 commands 的区别
 
@@ -115,5 +153,7 @@ Whisper 转录可能持续较长时间，因此推荐外部调用方遵守下面
 - `exports API`
   - 适合程序化集成
   - 类型和 DTO 更稳定
+- `agentHost`
+  - 适合其他插件的其他 agent 做 capability 发现和调用
 
-如果你要从其他插件消费能力，优先走 `exports API`，不要依赖命令层内部行为。
+如果你要从其他插件消费能力，优先走 `exports API` / `agentHost`，不要依赖命令层内部行为，也不要直接引用内部 agent 类。

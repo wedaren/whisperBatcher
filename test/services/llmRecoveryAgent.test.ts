@@ -4,10 +4,10 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { LlmRecoveryAgent } from '../../src/services/llmRecoveryAgent';
+import { ExecutionAgent } from '../../src/agents/execution-agent';
 
 describe('LlmRecoveryAgent', () => {
-    const agent = new LlmRecoveryAgent();
+    const agent = new ExecutionAgent();
 
     it('should switch to reduced-risk prompt on refusal', () => {
         const decision = agent.decide('translate', {

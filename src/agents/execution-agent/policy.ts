@@ -1,38 +1,4 @@
-/**
- * LLM 恢复 agent。
- * 它不是开放式聊天 agent，而是一个受控策略引擎：
- * 根据失败类型、已尝试策略和块大小，决定下一次调用该如何收敛。
- */
-
-export type RecoveryStage = 'optimize' | 'translate';
-
-export type RecoveryFailureKind =
-    | 'call_error'
-    | 'refusal'
-    | 'parse_mismatch'
-    | 'untranslated'
-    | 'prompt_leak'
-    | 'compliance_leak';
-
-export type PromptVariant =
-    | 'standard'
-    | 'strict_format'
-    | 'reduced_risk';
-
-export interface RecoveryAttemptState {
-    attempt: number;
-    chunkSize: number;
-    promptVariant: PromptVariant;
-    failures: RecoveryFailureKind[];
-}
-
-export interface RecoveryDecision {
-    shouldRetry: boolean;
-    nextChunkSize: number;
-    nextPromptVariant: PromptVariant;
-    reason: string;
-    fallbackMode: 'sanitized_source' | 'original_source';
-}
+import type { RecoveryAttemptState, RecoveryDecision, RecoveryFailureKind, RecoveryStage } from './types';
 
 const MAX_RECOVERY_ATTEMPTS = 4;
 const MIN_CHUNK_SIZE = 5;
@@ -42,10 +8,10 @@ function halveChunkSize(size: number): number {
 }
 
 /**
- * 根据失败类型为下一次重试生成策略。
- * 目标是优先尝试格式收敛，再缩小输入，再最终降级。
+ * ExecutionAgent 的策略核心。
+ * 这里只负责决定“是否继续执行、下次用什么 prompt、是否直接降级”，不负责写工件。
  */
-export class LlmRecoveryAgent {
+export class ExecutionAgent {
     decide(stage: RecoveryStage, state: RecoveryAttemptState, failure: RecoveryFailureKind): RecoveryDecision {
         const nextAttempt = state.attempt + 1;
         const fallbackMode = stage === 'translate' ? 'sanitized_source' : 'sanitized_source';

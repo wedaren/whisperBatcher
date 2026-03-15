@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { TaskSummary } from '../../src/publicApi';
-import { inferParticipantIntent } from '../../src/copilot/agentPlanner';
+import { inferTaskAgentIntent } from '../../src/agents/task-agent/policy';
 
 function task(partial: Partial<TaskSummary> & Pick<TaskSummary, 'id' | 'videoPath' | 'status'>): TaskSummary {
     return {
@@ -23,7 +23,7 @@ function task(partial: Partial<TaskSummary> & Pick<TaskSummary, 'id' | 'videoPat
 
 describe('inferParticipantIntent', () => {
     it('should auto-create-and-run when prompt includes a video path', () => {
-        const result = inferParticipantIntent(
+        const result = inferTaskAgentIntent(
             '请给 "/tmp/demo.mp4" 生成字幕',
             [],
             { type: 'help' }
@@ -32,7 +32,7 @@ describe('inferParticipantIntent', () => {
     });
 
     it('should keep unquoted paths with spaces intact', () => {
-        const result = inferParticipantIntent(
+        const result = inferTaskAgentIntent(
             '生成字幕 /Users/wedaren/Downloads/demo folder/sample clip_part005.mp4',
             [],
             { type: 'help' }
@@ -46,7 +46,7 @@ describe('inferParticipantIntent', () => {
 
     it('should keep long unquoted paths with CJK and special characters intact', () => {
         const videoPath = '/Users/wedaren/Downloads/SNOS-081-lada•AV01.tv•【LADAモザイク破壊】新人NO.1 STYLE あの話題の超庶民お姉ちゃん 鈴木希21歳 AVデビュー_L1VzZXJz/splits/SNOS-081-lada•AV01.tv•【LADAモザイク破壊】新人NO.1 STYLE あの話題の超庶民お姉ちゃん 鈴木希21歳 AVデビュー_part005.mp4';
-        const result = inferParticipantIntent(
+        const result = inferTaskAgentIntent(
             `生成字幕 ${videoPath}`,
             [],
             { type: 'help' }
@@ -59,7 +59,7 @@ describe('inferParticipantIntent', () => {
     });
 
     it('should infer retry against the latest failed task', () => {
-        const result = inferParticipantIntent(
+        const result = inferTaskAgentIntent(
             '重试刚才失败的任务',
             [
                 task({ id: 'task_old', videoPath: '/tmp/a.mp4', status: 'failed', updatedAt: '2026-03-14T10:00:00.000Z' }),
@@ -71,7 +71,7 @@ describe('inferParticipantIntent', () => {
     });
 
     it('should infer latest task inspection for status requests', () => {
-        const result = inferParticipantIntent(
+        const result = inferTaskAgentIntent(
             '看看最近任务的状态',
             [
                 task({ id: 'task_1', videoPath: '/tmp/a.mp4', status: 'completed', updatedAt: '2026-03-14T10:00:00.000Z' }),

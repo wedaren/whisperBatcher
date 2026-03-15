@@ -15,6 +15,8 @@
     "onLanguageModelTool:subtitleflow_list_tasks",
     "onLanguageModelTool:subtitleflow_get_task",
     "onLanguageModelTool:subtitleflow_enqueue_task",
+    "onLanguageModelTool:subtitleflow_enqueue_tasks",
+    "onLanguageModelTool:subtitleflow_scan_directory",
     "onLanguageModelTool:subtitleflow_run_pending",
     "onLanguageModelTool:subtitleflow_pause_task",
     "onLanguageModelTool:subtitleflow_resume_task",
@@ -260,6 +262,79 @@
         ]
       },
       {
+        "name": "subtitleflow_enqueue_tasks",
+        "displayName": "Enqueue Subtitle Tasks",
+        "modelDescription": "Create queued subtitle generation tasks for multiple absolute video paths.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "inputs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "videoPath": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "videoPath"
+                ]
+              }
+            },
+            "whisperModel": {
+              "type": "string"
+            },
+            "whisperLanguage": {
+              "type": "string"
+            },
+            "targetLanguages": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "inputs"
+          ]
+        },
+        "tags": [
+          "subtitle",
+          "tasks",
+          "write",
+          "batch"
+        ]
+      },
+      {
+        "name": "subtitleflow_scan_directory",
+        "displayName": "Scan Subtitle Directory",
+        "modelDescription": "Scan a directory and return video files that can be enqueued for subtitle generation.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "directoryPath": {
+              "type": "string"
+            },
+            "recursive": {
+              "type": "boolean"
+            },
+            "maxFiles": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "directoryPath"
+          ]
+        },
+        "tags": [
+          "subtitle",
+          "tasks",
+          "read",
+          "filesystem"
+        ]
+      },
+      {
         "name": "subtitleflow_run_pending",
         "displayName": "Run Pending Subtitle Tasks",
         "modelDescription": "Ask the background scheduler to start queued subtitle tasks.",
@@ -426,11 +501,12 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
-    "compile": "npm run check-types && npm run lint && node esbuild.js",
+    "sync:manifest": "node scripts/sync_package_manifest.js",
+    "compile": "npm run sync:manifest && npm run check-types && npm run lint && node esbuild.js",
     "watch": "npm-run-all -p watch:*",
     "watch:esbuild": "node esbuild.js --watch",
     "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
-    "package": "npm run check-types && npm run lint && node esbuild.js --production",
+    "package": "npm run sync:manifest && npm run check-types && npm run lint && node esbuild.js --production",
     "compile-tests": "tsc -p tsconfig.test.json",
     "watch-tests": "tsc -p tsconfig.test.json -w",
     "pretest": "npm run compile && npm run compile-tests",

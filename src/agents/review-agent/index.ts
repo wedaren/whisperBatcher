@@ -1,7 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import type { RecoveryFailureKind, RecoveryStage } from './llmRecoveryAgent';
-import type { SrtEntry } from '../types';
+import type { RecoveryFailureKind, RecoveryStage } from '../execution-agent';
+import type { SrtEntry } from '../../types';
+export * from './manifest';
 
 export interface ReviewRecord {
     stage: RecoveryStage;
@@ -27,25 +28,24 @@ export interface LexiconCandidate {
     timestamp: string;
 }
 
+export interface ReviewFailureInput {
+    stage: RecoveryStage;
+    chunkIndex: number;
+    chunkEntries: SrtEntry[];
+    sanitizedTexts: string[];
+    failure: RecoveryFailureKind;
+    promptVariant: string;
+    fallbackMode: string;
+    reason: string;
+    targetLang?: string;
+}
+
 /**
- * ReviewAgent 只负责失败归因和审查工件输出。
- * 它不回写正式词典，也不介入主执行链路。
+ * ReviewAgent 只负责失败归因和工件输出。
+ * 它不回写正式词典，也不参与主链路重试。
  */
 export class ReviewAgent {
-    recordFailure(
-        outDir: string,
-        input: {
-            stage: RecoveryStage;
-            chunkIndex: number;
-            chunkEntries: SrtEntry[];
-            sanitizedTexts: string[];
-            failure: RecoveryFailureKind;
-            promptVariant: string;
-            fallbackMode: string;
-            reason: string;
-            targetLang?: string;
-        }
-    ): void {
+    recordFailure(outDir: string, input: ReviewFailureInput): void {
         const timestamp = new Date().toISOString();
         const reviewRecord: ReviewRecord = {
             stage: input.stage,
@@ -69,13 +69,7 @@ export class ReviewAgent {
         }
     }
 
-    private extractCandidates(input: {
-        stage: RecoveryStage;
-        chunkIndex: number;
-        sanitizedTexts: string[];
-        reason: string;
-        targetLang?: string;
-    }): LexiconCandidate[] {
+    private extractCandidates(input: Pick<ReviewFailureInput, 'stage' | 'chunkIndex' | 'sanitizedTexts' | 'reason' | 'targetLang'>): LexiconCandidate[] {
         const timestamp = new Date().toISOString();
         const candidates: LexiconCandidate[] = [];
         const seen = new Set<string>();
