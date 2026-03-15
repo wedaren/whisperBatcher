@@ -86,12 +86,12 @@ Whisper 转录可能持续较长时间，因此 Copilot agent 不采用“单次
 
 当前 agent 已拆成独立目录，便于后续分别演化 prompt、tools 和说明：
 
-- [task-agent](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/agents/task-agent/README.md)
-- [execution-agent](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/agents/execution-agent/README.md)
-- [review-agent](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/agents/review-agent/README.md)
-- [orchestrator](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/agents/orchestrator/README.md)
-- [runtime](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/agents/runtime/README.md)
-- [agent-host](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/agent-host/README.md)
+- [task-agent](./src/agents/task-agent/README.md)
+- [execution-agent](./src/agents/execution-agent/README.md)
+- [review-agent](./src/agents/review-agent/README.md)
+- [orchestrator](./src/agents/orchestrator/README.md)
+- [runtime](./src/agents/runtime/README.md)
+- [agent-host](./src/agent-host/README.md)
 
 ## 依赖要求
 
@@ -122,17 +122,17 @@ Whisper 转录可能持续较长时间，因此 Copilot agent 不采用“单次
 
 ## 文档
 
-- 架构文档：[docs/architecture.md](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/docs/architecture.md)
-- Agent 架构设计文档：[docs/agent-architecture.md](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/docs/agent-architecture.md)
-- 产物命名与增量构建设计：[docs/artifact-build-design.md](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/docs/artifact-build-design.md)
-- 原理文档：[docs/principles.md](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/docs/principles.md)
-- 对外接入文档：[docs/developer-api.md](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/docs/developer-api.md)
+- 架构文档：[docs/architecture.md](./docs/architecture.md)
+- Agent 架构设计文档：[docs/agent-architecture.md](./docs/agent-architecture.md)
+- 产物命名与增量构建设计：[docs/artifact-build-design.md](./docs/artifact-build-design.md)
+- 原理文档：[docs/principles.md](./docs/principles.md)
+- 对外接入文档：[docs/developer-api.md](./docs/developer-api.md)
 
 ## 构建约束
 
 - `package.json` 中的 `chatParticipants`、`languageModelTools` 和相关 `activationEvents`
-  - 现在由 [subtitleFlowRegistry.ts](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/src/subtitleFlowRegistry.ts:1) 驱动
-  - 构建前会通过 [sync_package_manifest.js](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/scripts/sync_package_manifest.js:1) 自动同步
+  - 现在由 [subtitleFlowRegistry.ts](./src/subtitleFlowRegistry.ts) 驱动
+  - 构建前会通过 [sync_package_manifest.js](./scripts/sync_package_manifest.js) 自动同步
   - 不应再手工修改这些受管字段
 
 ## 当前状态

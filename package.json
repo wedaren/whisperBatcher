@@ -4,6 +4,14 @@
   "description": "Batch subtitle generation & translation with Whisper + LLM",
   "version": "0.0.2",
   "publisher": "wedaren",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wedaren/whisperBatcher.git"
+  },
+  "homepage": "https://github.com/wedaren/whisperBatcher",
+  "bugs": {
+    "url": "https://github.com/wedaren/whisperBatcher/issues"
+  },
   "engines": {
     "vscode": "^1.109.0"
   },
