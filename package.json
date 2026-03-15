@@ -2,7 +2,7 @@
   "name": "whisper-subtitle-flow",
   "displayName": "Whisper Subtitle Flow",
   "description": "Batch subtitle generation & translation with Whisper + LLM",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "wedaren",
   "engines": {
     "vscode": "^1.109.0"
