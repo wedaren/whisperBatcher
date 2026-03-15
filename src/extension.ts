@@ -82,11 +82,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<Subtit
         treeDataProvider: treeProvider,
         showCollapseAll: true,
     });
+    await vscode.commands.executeCommand('setContext', 'subtitleFlow.viewMode', treeProvider.getViewMode());
     scheduler.onDidChange(() => treeProvider.refresh());
     api.onDidChangeTasks(() => treeProvider.refresh());
 
     // ── 4. 注册命令与 Copilot 入口 ──
-    registerCommands(context, { api, logger });
+    registerCommands(context, { api, logger, treeProvider });
     registerSubtitleFlowTools(context, api);
     registerSubtitleFlowParticipant(context, api);
 

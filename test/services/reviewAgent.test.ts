@@ -39,8 +39,10 @@ describe('ReviewAgent', () => {
 
         const reviewFile = path.join(tmpDir, 'manual-review.json');
         const candidateFile = path.join(tmpDir, 'lexicon-candidates.json');
+        const summaryFile = path.join(tmpDir, 'recovery-summary.md');
         assert.equal(fs.existsSync(reviewFile), true);
         assert.equal(fs.existsSync(candidateFile), true);
+        assert.equal(fs.existsSync(summaryFile), true);
 
         const reviews = JSON.parse(fs.readFileSync(reviewFile, 'utf-8'));
         const candidates = JSON.parse(fs.readFileSync(candidateFile, 'utf-8'));
@@ -66,7 +68,9 @@ describe('ReviewAgent', () => {
 
         const reviewFile = path.join(tmpDir, 'manual-review.json');
         const candidateFile = path.join(tmpDir, 'lexicon-candidates.json');
+        const summaryFile = path.join(tmpDir, 'recovery-summary.md');
         assert.equal(fs.existsSync(reviewFile), true);
         assert.equal(fs.existsSync(candidateFile), false);
+        assert.equal(fs.existsSync(summaryFile), true);
     });
 });

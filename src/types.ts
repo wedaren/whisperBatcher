@@ -40,9 +40,11 @@ export interface TaskConfig {
 export interface TaskRecord {
     id: string;
     videoPath: string;
+    createdAt: string;
     status: TaskPhase;
     currentPhase: string;
     updatedAt: string;
+    batchId?: string;
     outputs: TaskOutputs;
     config?: TaskConfig;
     lastError?: string;

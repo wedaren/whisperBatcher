@@ -36,6 +36,8 @@ describe('extension activate', () => {
         const extensionExports = await activate(context);
         assert.equal(typeof extensionExports.enqueueTask, 'function');
         assert.equal(typeof extensionExports.listTasks, 'function');
+        assert.equal(typeof extensionExports.listBatches, 'function');
+        assert.equal(typeof extensionExports.summarizeTaskResult, 'function');
         assert.equal(typeof extensionExports.agentHost.listAgents, 'function');
         assert.equal(typeof extensionExports.agentHost.listCapabilities, 'function');
         assert.equal(typeof extensionExports.agentHost.invokeCapability, 'function');
@@ -61,6 +63,9 @@ describe('extension activate', () => {
         assert.equal(vscodeTesting.__testing.registeredTools.has(SUBTITLE_FLOW_TOOL_NAMES.scanDirectory), true);
         assert.equal(vscodeTesting.__testing.registeredTools.has(SUBTITLE_FLOW_TOOL_NAMES.enqueueTask), true);
         assert.equal(vscodeTesting.__testing.registeredTools.has(SUBTITLE_FLOW_TOOL_NAMES.enqueueTasks), true);
+        assert.equal(vscodeTesting.__testing.registeredTools.has(SUBTITLE_FLOW_TOOL_NAMES.listBatches), true);
+        assert.equal(vscodeTesting.__testing.registeredTools.has(SUBTITLE_FLOW_TOOL_NAMES.getLatestBatch), true);
+        assert.equal(vscodeTesting.__testing.registeredTools.has(SUBTITLE_FLOW_TOOL_NAMES.summarizeTaskResult), true);
         assert.equal(vscodeTesting.__testing.registeredTools.has(SUBTITLE_FLOW_TOOL_NAMES.getTask), true);
     });
 
@@ -121,6 +126,13 @@ describe('extension activate', () => {
         ) as { id: string; status: string };
         assert.equal(fetched.id, task.id);
         assert.equal(fetched.status, 'queued');
+
+        const result = await extensionExports.agentHost.invokeCapability(
+            SUBTITLE_FLOW_CAPABILITIES.summarizeTaskResult,
+            { taskId: task.id }
+        ) as { taskId: string; message: string };
+        assert.equal(result.taskId, task.id);
+        assert.equal(typeof result.message, 'string');
     });
 
     it('should allow invoking directory capabilities through agent host', async () => {

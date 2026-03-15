@@ -13,9 +13,11 @@ function task(partial: Partial<TaskSummary> & Pick<TaskSummary, 'id' | 'videoPat
     return {
         id: partial.id,
         videoPath: partial.videoPath,
+        createdAt: partial.createdAt ?? '2026-03-15T00:00:00.000Z',
         status: partial.status,
         currentPhase: partial.status,
         updatedAt: partial.updatedAt ?? '2026-03-15T00:00:00.000Z',
+        batchId: partial.batchId,
         outputs: partial.outputs ?? { translated: {} },
         config: partial.config,
         lastError: partial.lastError,
@@ -37,7 +39,7 @@ function createApi(tasks: TaskSummary[]): SubtitleFlowApi {
             return created;
         },
         async enqueueTasks(inputs) {
-            return Promise.all(inputs.map((input) => this.enqueueTask(input)));
+            return Promise.all(inputs.map((input) => this.enqueueTask(input).then((created) => ({ ...created, batchId: 'batch_test' }))));
         },
         async scanDirectory(directoryPath) {
             return {
@@ -47,14 +49,59 @@ function createApi(tasks: TaskSummary[]): SubtitleFlowApi {
                     `${directoryPath}/part002.mp4`,
                 ],
                 truncated: false,
+                warnings: [],
             };
         },
         runPending() {},
+        getBatch() {
+            return undefined;
+        },
+        getLatestBatch() {
+            return {
+                id: 'batch_test',
+                createdAt: '2026-03-15T10:00:00.000Z',
+                updatedAt: '2026-03-15T10:00:00.000Z',
+                taskIds: allTasks.map((item) => item.id),
+                videoPaths: allTasks.map((item) => item.videoPath),
+                counts: {
+                    total: allTasks.length,
+                    queued: allTasks.filter((item) => item.status === 'queued').length,
+                    running: 0,
+                    completed: allTasks.filter((item) => item.status === 'completed').length,
+                    failed: allTasks.filter((item) => item.status === 'failed').length,
+                    paused: allTasks.filter((item) => item.status === 'paused').length,
+                },
+            };
+        },
+        listBatches() {
+            const latest = this.getLatestBatch();
+            return latest ? [latest] : [];
+        },
         getTask(taskId) {
             return allTasks.find((item) => item.id === taskId);
         },
         listTasks() {
             return allTasks.slice();
+        },
+        summarizeTaskResult(taskId) {
+            const existing = allTasks.find((item) => item.id === taskId);
+            if (!existing) {
+                return undefined;
+            }
+            return {
+                taskId,
+                batchId: existing.batchId,
+                status: existing.status,
+                currentPhase: existing.currentPhase,
+                videoPath: existing.videoPath,
+                translatedPaths: { ...existing.outputs.translated },
+                review: {
+                    hasManualReview: false,
+                    hasLexiconCandidates: false,
+                    hasRecoverySummary: false,
+                },
+                message: 'ok',
+            };
         },
         cleanStaleTasks() {
             return 0;
@@ -299,7 +346,67 @@ describe('createSubtitleFlowParticipantHandler', () => {
         );
         assert.equal(vscodeTesting.__testing.toolInvocations[0].options.input.recursive, true);
         assert.equal(
-            stream.markdownMessages.some((message: string) => message.includes('目录中的视频已批量入队')),
+            stream.markdownMessages.some((message: string) => message.includes('个视频已批量入队')),
+            true
+        );
+    });
+
+    it('should explain the detected directory candidate when directory scan creates no tasks', async () => {
+        const api = {
+            ...createApi([]),
+            async scanDirectory(directoryPath: string) {
+                return {
+                    directoryPath,
+                    videos: [],
+                    truncated: false,
+                    warnings: [`目录不存在或无法访问：${directoryPath}`],
+                };
+            },
+        } as SubtitleFlowApi;
+
+        const directoryPath = '/tmp/not existing folder';
+        const registeredTools = new Map<string, any>([
+            [SUBTITLE_FLOW_TOOL_NAMES.scanDirectory, {
+                invoke: async (options: any) => new vscode.LanguageModelToolResult([
+                    new vscode.LanguageModelTextPart(JSON.stringify(await api.scanDirectory(options.input.directoryPath))),
+                ]),
+            }],
+            [SUBTITLE_FLOW_TOOL_NAMES.enqueueTasks, {
+                invoke: async () => new vscode.LanguageModelToolResult([
+                    new vscode.LanguageModelTextPart(JSON.stringify([])),
+                ]),
+            }],
+            [SUBTITLE_FLOW_TOOL_NAMES.runPending, {
+                invoke: async () => new vscode.LanguageModelToolResult([
+                    new vscode.LanguageModelTextPart(JSON.stringify({ ok: true })),
+                ]),
+            }],
+        ]);
+
+        for (const [name, tool] of registeredTools) {
+            vscodeTesting.__testing.registeredTools.set(name, tool);
+        }
+
+        const handler = createSubtitleFlowParticipantHandler(api);
+        const stream = createStream();
+
+        await handler(
+            {
+                prompt: `${directoryPath} 这个目录的视频生成字幕`,
+                command: undefined,
+                toolInvocationToken: undefined,
+            } as any,
+            {} as any,
+            stream as any,
+            vscodeTesting.CancellationToken.None
+        );
+
+        assert.equal(
+            stream.markdownMessages.some((message: string) => message.includes('我识别到的目录候选是')),
+            true
+        );
+        assert.equal(
+            stream.markdownMessages.some((message: string) => message.includes('建议直接给目录加引号后重试')),
             true
         );
     });

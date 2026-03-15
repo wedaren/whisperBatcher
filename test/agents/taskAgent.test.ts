@@ -4,17 +4,23 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import type { TaskSummary } from '../../src/publicApi';
 import { buildTaskAgentWorkflow, inferTaskAgentIntent, parseTaskAgentIntent } from '../../src/agents/task-agent/policy';
+import { extractDirectoryPath } from '../../src/agents/task-agent/parser';
 import { planTaskAgentWorkflow } from '../../src/agents/task-agent/planner';
 
 function task(partial: Partial<TaskSummary> & Pick<TaskSummary, 'id' | 'videoPath' | 'status'>): TaskSummary {
     return {
         id: partial.id,
         videoPath: partial.videoPath,
+        createdAt: partial.createdAt ?? '2026-03-15T00:00:00.000Z',
         status: partial.status,
         currentPhase: partial.status,
         updatedAt: partial.updatedAt ?? '2026-03-15T00:00:00.000Z',
+        batchId: partial.batchId,
         outputs: partial.outputs ?? { translated: {} },
         config: partial.config,
         lastError: partial.lastError,
@@ -80,5 +86,23 @@ describe('task-agent policy', () => {
             'subtitleflow_enqueue_tasks',
             'subtitleflow_run_pending',
         ]);
+    });
+
+    it('should infer latest batch intent from natural language', () => {
+        const intent = inferTaskAgentIntent('看看最近批次状态', [], { type: 'help' });
+        assert.deepEqual(intent, { type: 'latestBatch' });
+    });
+
+    it('should extract existing directory path from natural language without quotes', () => {
+        const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'task-agent-parser-'));
+        const directoryPath = path.join(rootDir, 'demo folder with spaces');
+        fs.mkdirSync(directoryPath, { recursive: true });
+
+        try {
+            const extracted = extractDirectoryPath(`${directoryPath} 这个目录的视频生成字幕`);
+            assert.equal(extracted, directoryPath);
+        } finally {
+            fs.rmSync(rootDir, { recursive: true, force: true });
+        }
     });
 });

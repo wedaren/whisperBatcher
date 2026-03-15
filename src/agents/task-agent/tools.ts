@@ -2,7 +2,7 @@ import type { SubtitleFlowApi } from '../../publicApi';
 import type * as vscode from 'vscode';
 
 export interface TaskAgentToolManifest {
-    key: 'listTasks' | 'getTask' | 'enqueueTask' | 'enqueueTasks' | 'scanDirectory' | 'runPending' | 'pauseTask' | 'resumeTask' | 'retryTask' | 'deleteTask';
+    key: 'listTasks' | 'listBatches' | 'getLatestBatch' | 'getTask' | 'summarizeTaskResult' | 'enqueueTask' | 'enqueueTasks' | 'scanDirectory' | 'runPending' | 'pauseTask' | 'resumeTask' | 'retryTask' | 'deleteTask';
     name: string;
     displayName: string;
     modelDescription: string;
@@ -33,6 +33,26 @@ export const TASK_AGENT_TOOL_MANIFESTS: TaskAgentToolManifest[] = [
         invoke: async (api) => api.listTasks(),
     },
     {
+        key: 'listBatches',
+        name: 'subtitleflow_list_batches',
+        displayName: 'List Subtitle Batches',
+        modelDescription: 'List recent subtitle task batches with aggregated progress counters.',
+        inputSchema: { type: 'object', properties: {} },
+        tags: ['subtitle', 'tasks', 'read', 'batch'],
+        invocationMessage: () => '正在读取最近字幕批次',
+        invoke: async (api) => api.listBatches(),
+    },
+    {
+        key: 'getLatestBatch',
+        name: 'subtitleflow_get_latest_batch',
+        displayName: 'Get Latest Subtitle Batch',
+        modelDescription: 'Read the latest subtitle task batch summary.',
+        inputSchema: { type: 'object', properties: {} },
+        tags: ['subtitle', 'tasks', 'read', 'batch'],
+        invocationMessage: () => '正在读取最近批次状态',
+        invoke: async (api) => api.getLatestBatch() ?? null,
+    },
+    {
         key: 'getTask',
         name: 'subtitleflow_get_task',
         displayName: 'Get Subtitle Task',
@@ -45,6 +65,20 @@ export const TASK_AGENT_TOOL_MANIFESTS: TaskAgentToolManifest[] = [
         tags: ['subtitle', 'tasks', 'read'],
         invocationMessage: (input) => `正在读取任务 ${String(input.taskId)}`,
         invoke: async (api, input) => api.getTask(String(input.taskId)) ?? null,
+    },
+    {
+        key: 'summarizeTaskResult',
+        name: 'subtitleflow_summarize_task_result',
+        displayName: 'Summarize Subtitle Result',
+        modelDescription: 'Summarize output files and review artifacts for one subtitle task.',
+        inputSchema: {
+            type: 'object',
+            properties: { taskId: { type: 'string' } },
+            required: ['taskId'],
+        },
+        tags: ['subtitle', 'tasks', 'read', 'result'],
+        invocationMessage: (input) => `正在汇总任务 ${String(input.taskId)} 的输出结果`,
+        invoke: async (api, input) => api.summarizeTaskResult(String(input.taskId)) ?? null,
     },
     {
         key: 'enqueueTask',

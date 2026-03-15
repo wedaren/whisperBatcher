@@ -1,5 +1,7 @@
 # 架构文档
 
+如果要看更正式的 agent 职责和调用关系说明，直接看 [agent-architecture.md](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/docs/agent-architecture.md)。
+
 ## 总览
 
 `whisper-subtitle-flow` 是一个 VS Code 扩展，目标是把“视频转录 + 字幕优化 + 多语言翻译”组织成一条可批处理的字幕流水线。

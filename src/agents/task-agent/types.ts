@@ -1,9 +1,12 @@
-import type { TaskSummary } from '../../publicApi';
+import type { BatchSummary, TaskResultSummary, TaskSummary } from '../../publicApi';
 
 export type TaskAgentIntent =
     | { type: 'help' }
     | { type: 'list' }
+    | { type: 'listBatches' }
+    | { type: 'latestBatch' }
     | { type: 'get'; taskId: string }
+    | { type: 'result'; taskId: string }
     | { type: 'pause'; taskId: string }
     | { type: 'resume'; taskId: string }
     | { type: 'retry'; taskId: string }
@@ -17,7 +20,12 @@ export interface TaskAgentPlannerState {
         directoryPath: string;
         videos: string[];
         truncated: boolean;
+        warnings?: string[];
+        suggestedDirectoryPath?: string;
     };
+    enqueueTasks?: TaskSummary[];
+    latestBatch?: BatchSummary | null;
+    taskResult?: TaskResultSummary | null;
 }
 
 export interface TaskAgentStep {
@@ -31,8 +39,8 @@ export interface TaskAgentStep {
 export interface TaskAgentWorkflow {
     steps: TaskAgentStep[];
     inspectTaskAfterStep?: number;
-    listTasksAfterExecution?: boolean;
-    finalMessage?: string;
+    listTasksAfterExecution?: boolean | ((state: TaskAgentPlannerState) => boolean);
+    finalMessage?: string | ((state: TaskAgentPlannerState) => string | undefined);
 }
 
 export interface TaskAgentSnapshot {

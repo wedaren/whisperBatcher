@@ -48,14 +48,26 @@ export class TaskStore {
         return `task_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
     }
 
-    addTask(videoPath: string, config?: { whisperModel?: string; whisperLanguage?: string; targetLanguages?: string[] }): TaskRecord {
+    generateBatchId(): string {
+        // 批次 ID 只要求在当前工作区内可读且冲突概率低。
+        return `batch_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    }
+
+    addTask(
+        videoPath: string,
+        config?: { whisperModel?: string; whisperLanguage?: string; targetLanguages?: string[] },
+        metadata?: { batchId?: string }
+    ): TaskRecord {
         // 新任务统一从 queued 状态开始，实际运行由调度器负责。
+        const now = new Date().toISOString();
         const record: TaskRecord = {
             id: this.generateId(),
             videoPath,
+            createdAt: now,
             status: 'queued',
             currentPhase: 'queued',
-            updatedAt: new Date().toISOString(),
+            updatedAt: now,
+            batchId: metadata?.batchId,
             outputs: { translated: {} },
             config: config
         };

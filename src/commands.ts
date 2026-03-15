@@ -9,10 +9,12 @@ import { VIDEO_EXTENSIONS } from './constants';
 import { Logger } from './services/logger';
 import type { SubtitleFlowApi } from './publicApi';
 import { TaskTreeItem } from './views/taskTreeItem';
+import type { TaskTreeDataProvider } from './views/taskTreeProvider';
 
 export interface CommandDependencies {
     api: SubtitleFlowApi;
     logger: Logger;
+    treeProvider?: TaskTreeDataProvider;
 }
 
 /**
@@ -27,6 +29,7 @@ export function registerCommands(
     deps: CommandDependencies
 ): void {
     const { api, logger } = deps;
+    const treeProvider = deps.treeProvider;
 
     // 添加视频并创建批量任务
     context.subscriptions.push(
@@ -143,6 +146,22 @@ export function registerCommands(
                 'workbench.action.chat.open',
                 '@subtitleFlow'
             );
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('subtitleFlow.showTaskList', async () => {
+            logger.info('Command: showTaskList triggered');
+            treeProvider?.setViewMode('list');
+            await vscode.commands.executeCommand('setContext', 'subtitleFlow.viewMode', 'list');
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('subtitleFlow.showTaskBatches', async () => {
+            logger.info('Command: showTaskBatches triggered');
+            treeProvider?.setViewMode('batch');
+            await vscode.commands.executeCommand('setContext', 'subtitleFlow.viewMode', 'batch');
         })
     );
 

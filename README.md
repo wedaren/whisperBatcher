@@ -11,6 +11,7 @@
 - 批量选择多个视频并创建任务
 - 按最大并发数自动调度任务
 - 在侧边栏查看任务状态和输出文件
+- 在侧边栏切换“列表视图 / 批次视图”，用同一批任务数据查看单任务或批次摘要
 - 通过 `@subtitleFlow` Copilot agent 以后台任务方式控制长流程
 - 通过扩展 `exports` 暴露公共 API，便于其他 VS Code 插件直接消费
 - 为每个任务生成配置文件和执行日志
@@ -122,6 +123,7 @@ Whisper 转录可能持续较长时间，因此 Copilot agent 不采用“单次
 ## 文档
 
 - 架构文档：[docs/architecture.md](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/docs/architecture.md)
+- Agent 架构设计文档：[docs/agent-architecture.md](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/docs/agent-architecture.md)
 - 原理文档：[docs/principles.md](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/docs/principles.md)
 - 对外接入文档：[docs/developer-api.md](/Users/wedaren/repositoryDestinationOfGithub/whisperBatcher/docs/developer-api.md)
 

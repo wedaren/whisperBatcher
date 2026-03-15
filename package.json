@@ -13,7 +13,10 @@
   "activationEvents": [
     "onChatParticipant:wedaren.whisper-subtitle-flow.agent",
     "onLanguageModelTool:subtitleflow_list_tasks",
+    "onLanguageModelTool:subtitleflow_list_batches",
+    "onLanguageModelTool:subtitleflow_get_latest_batch",
     "onLanguageModelTool:subtitleflow_get_task",
+    "onLanguageModelTool:subtitleflow_summarize_task_result",
     "onLanguageModelTool:subtitleflow_enqueue_task",
     "onLanguageModelTool:subtitleflow_enqueue_tasks",
     "onLanguageModelTool:subtitleflow_scan_directory",
@@ -62,6 +65,18 @@
         "title": "Run Pending Tasks",
         "category": "Subtitle Flow",
         "icon": "$(run-all)"
+      },
+      {
+        "command": "subtitleFlow.showTaskList",
+        "title": "Show Task List",
+        "category": "Subtitle Flow",
+        "icon": "$(list-unordered)"
+      },
+      {
+        "command": "subtitleFlow.showTaskBatches",
+        "title": "Show Task Batches",
+        "category": "Subtitle Flow",
+        "icon": "$(group-by-ref-type)"
       },
       {
         "command": "subtitleFlow.pauseResumeTask",
@@ -115,6 +130,16 @@
           "command": "subtitleFlow.clearStaleTasks",
           "when": "view == subtitleFlowTasks",
           "group": "navigation@3"
+        },
+        {
+          "command": "subtitleFlow.showTaskList",
+          "when": "view == subtitleFlowTasks && subtitleFlow.viewMode != list",
+          "group": "navigation@4"
+        },
+        {
+          "command": "subtitleFlow.showTaskBatches",
+          "when": "view == subtitleFlowTasks && subtitleFlow.viewMode != batch",
+          "group": "navigation@5"
         }
       ],
       "view/item/context": [
@@ -162,6 +187,10 @@
             "description": "List subtitle tasks"
           },
           {
+            "name": "batches",
+            "description": "List recent subtitle batches"
+          },
+          {
             "name": "enqueue",
             "description": "Create a queued subtitle task from a video path"
           },
@@ -172,6 +201,10 @@
           {
             "name": "get",
             "description": "Inspect one subtitle task"
+          },
+          {
+            "name": "result",
+            "description": "Summarize one subtitle task result"
           },
           {
             "name": "pause",
@@ -208,6 +241,36 @@
         ]
       },
       {
+        "name": "subtitleflow_list_batches",
+        "displayName": "List Subtitle Batches",
+        "modelDescription": "List recent subtitle task batches with aggregated progress counters.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        },
+        "tags": [
+          "subtitle",
+          "tasks",
+          "read",
+          "batch"
+        ]
+      },
+      {
+        "name": "subtitleflow_get_latest_batch",
+        "displayName": "Get Latest Subtitle Batch",
+        "modelDescription": "Read the latest subtitle task batch summary.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        },
+        "tags": [
+          "subtitle",
+          "tasks",
+          "read",
+          "batch"
+        ]
+      },
+      {
         "name": "subtitleflow_get_task",
         "displayName": "Get Subtitle Task",
         "modelDescription": "Get a subtitle task by task id.",
@@ -226,6 +289,28 @@
           "subtitle",
           "tasks",
           "read"
+        ]
+      },
+      {
+        "name": "subtitleflow_summarize_task_result",
+        "displayName": "Summarize Subtitle Result",
+        "modelDescription": "Summarize output files and review artifacts for one subtitle task.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "taskId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "taskId"
+          ]
+        },
+        "tags": [
+          "subtitle",
+          "tasks",
+          "read",
+          "result"
         ]
       },
       {

@@ -22,8 +22,11 @@ export const SUBTITLE_FLOW_CAPABILITIES = {
     enqueueTasks: 'task.enqueue-batch',
     enqueueDirectory: 'task.enqueue-directory',
     runPending: 'task.run-pending',
+    listBatches: 'task.list-batches',
+    getLatestBatch: 'task.get-latest-batch',
     getTask: 'task.get',
     listTasks: 'task.list',
+    summarizeTaskResult: 'task.summarize-result',
     pauseTask: 'task.pause',
     resumeTask: 'task.resume',
     retryTask: 'task.retry',
@@ -36,7 +39,10 @@ export const SUBTITLE_FLOW_CAPABILITIES = {
 
 const TASK_TOOL_TO_CAPABILITY = {
     listTasks: SUBTITLE_FLOW_CAPABILITIES.listTasks,
+    listBatches: SUBTITLE_FLOW_CAPABILITIES.listBatches,
+    getLatestBatch: SUBTITLE_FLOW_CAPABILITIES.getLatestBatch,
     getTask: SUBTITLE_FLOW_CAPABILITIES.getTask,
+    summarizeTaskResult: SUBTITLE_FLOW_CAPABILITIES.summarizeTaskResult,
     enqueueTask: SUBTITLE_FLOW_CAPABILITIES.enqueueTask,
     enqueueTasks: SUBTITLE_FLOW_CAPABILITIES.enqueueTasks,
     scanDirectory: SUBTITLE_FLOW_CAPABILITIES.scanDirectory,
@@ -52,15 +58,51 @@ const TASK_SUMMARY_SCHEMA: JsonSchema = {
     properties: {
         id: { type: 'string' },
         videoPath: { type: 'string' },
+        createdAt: { type: 'string' },
         status: { type: 'string' },
         currentPhase: { type: 'string' },
         updatedAt: { type: 'string' },
+        batchId: { type: 'string' },
         outputs: { type: 'object' },
         config: { type: 'object' },
         lastError: { type: 'string' },
         complianceHits: { type: 'number' },
     },
-    required: ['id', 'videoPath', 'status', 'currentPhase', 'updatedAt', 'outputs'],
+    required: ['id', 'videoPath', 'createdAt', 'status', 'currentPhase', 'updatedAt', 'outputs'],
+};
+
+const BATCH_SUMMARY_SCHEMA: JsonSchema = {
+    type: 'object',
+    properties: {
+        id: { type: 'string' },
+        createdAt: { type: 'string' },
+        updatedAt: { type: 'string' },
+        taskIds: { type: 'array', items: { type: 'string' } },
+        videoPaths: { type: 'array', items: { type: 'string' } },
+        counts: { type: 'object' },
+    },
+    required: ['id', 'createdAt', 'updatedAt', 'taskIds', 'videoPaths', 'counts'],
+};
+
+const TASK_RESULT_SUMMARY_SCHEMA: JsonSchema = {
+    type: 'object',
+    properties: {
+        taskId: { type: 'string' },
+        batchId: { type: 'string' },
+        status: { type: 'string' },
+        currentPhase: { type: 'string' },
+        videoPath: { type: 'string' },
+        outputFolder: { type: 'string' },
+        defaultSubtitlePath: { type: 'string' },
+        optimizedSubtitlePath: { type: 'string' },
+        rawSubtitlePath: { type: 'string' },
+        translatedPaths: { type: 'object' },
+        logPath: { type: 'string' },
+        configPath: { type: 'string' },
+        review: { type: 'object' },
+        message: { type: 'string' },
+    },
+    required: ['taskId', 'status', 'currentPhase', 'videoPath', 'translatedPaths', 'review', 'message'],
 };
 
 const TASK_CONTROL_RESULT_SCHEMA: JsonSchema = {
@@ -81,8 +123,17 @@ function taskCapabilityOutputSchema(toolKey: keyof typeof TASK_TOOL_TO_CAPABILIT
     if (toolKey === 'listTasks') {
         return { type: 'array', items: TASK_SUMMARY_SCHEMA };
     }
+    if (toolKey === 'listBatches') {
+        return { type: 'array', items: BATCH_SUMMARY_SCHEMA };
+    }
+    if (toolKey === 'getLatestBatch') {
+        return BATCH_SUMMARY_SCHEMA;
+    }
     if (toolKey === 'getTask' || toolKey === 'enqueueTask') {
         return TASK_SUMMARY_SCHEMA;
+    }
+    if (toolKey === 'summarizeTaskResult') {
+        return TASK_RESULT_SUMMARY_SCHEMA;
     }
     if (toolKey === 'enqueueTasks') {
         return { type: 'array', items: TASK_SUMMARY_SCHEMA };
@@ -94,8 +145,10 @@ function taskCapabilityOutputSchema(toolKey: keyof typeof TASK_TOOL_TO_CAPABILIT
                 directoryPath: { type: 'string' },
                 videos: { type: 'array', items: { type: 'string' } },
                 truncated: { type: 'boolean' },
+                warnings: { type: 'array', items: { type: 'string' } },
+                suggestedDirectoryPath: { type: 'string' },
             },
-            required: ['directoryPath', 'videos', 'truncated'],
+            required: ['directoryPath', 'videos', 'truncated', 'warnings'],
         };
     }
     return TASK_CONTROL_RESULT_SCHEMA;
@@ -110,7 +163,14 @@ export function buildSubtitleFlowCapabilities(): AgentCapabilityManifest[] {
             inputSchema: tool.inputSchema as JsonSchema,
             outputSchema: taskCapabilityOutputSchema(tool.key),
             inputSchemaSummary: JSON.stringify(tool.inputSchema),
-            outputSchemaSummary: 'TaskSummary、TaskSummary[] 或任务控制确认结果',
+            outputSchemaSummary:
+                tool.key === 'listBatches'
+                    ? 'BatchSummary[]'
+                    : tool.key === 'getLatestBatch'
+                        ? 'BatchSummary'
+                        : tool.key === 'summarizeTaskResult'
+                            ? 'TaskResultSummary'
+                            : 'TaskSummary、TaskSummary[] 或任务控制确认结果',
         })),
         {
             name: SUBTITLE_FLOW_CAPABILITIES.enqueueDirectory,
@@ -136,8 +196,10 @@ export function buildSubtitleFlowCapabilities(): AgentCapabilityManifest[] {
                             directoryPath: { type: 'string' },
                             videos: { type: 'array', items: { type: 'string' } },
                             truncated: { type: 'boolean' },
+                            warnings: { type: 'array', items: { type: 'string' } },
+                            suggestedDirectoryPath: { type: 'string' },
                         },
-                        required: ['directoryPath', 'videos', 'truncated'],
+                        required: ['directoryPath', 'videos', 'truncated', 'warnings'],
                     },
                     tasks: { type: 'array', items: TASK_SUMMARY_SCHEMA },
                     started: { type: 'boolean' },
@@ -303,10 +365,16 @@ export class SubtitleFlowAgentHostService implements SubtitleFlowAgentHost {
             case SUBTITLE_FLOW_CAPABILITIES.runPending:
                 this.api.runPending();
                 return { started: true };
+            case SUBTITLE_FLOW_CAPABILITIES.listBatches:
+                return this.api.listBatches();
+            case SUBTITLE_FLOW_CAPABILITIES.getLatestBatch:
+                return this.api.getLatestBatch();
             case SUBTITLE_FLOW_CAPABILITIES.getTask:
                 return this.api.getTask(this.requireString(input.taskId, 'taskId'));
             case SUBTITLE_FLOW_CAPABILITIES.listTasks:
                 return this.api.listTasks();
+            case SUBTITLE_FLOW_CAPABILITIES.summarizeTaskResult:
+                return this.api.summarizeTaskResult(this.requireString(input.taskId, 'taskId'));
             case SUBTITLE_FLOW_CAPABILITIES.pauseTask: {
                 const taskId = this.requireString(input.taskId, 'taskId');
                 this.api.pauseTask(taskId);
@@ -415,6 +483,22 @@ export class SubtitleFlowExtensionExportsService implements SubtitleFlowExtensio
 
     listTasks(...args: Parameters<SubtitleFlowApi['listTasks']>): ReturnType<SubtitleFlowApi['listTasks']> {
         return this.api.listTasks(...args);
+    }
+
+    getBatch(...args: Parameters<SubtitleFlowApi['getBatch']>): ReturnType<SubtitleFlowApi['getBatch']> {
+        return this.api.getBatch(...args);
+    }
+
+    getLatestBatch(...args: Parameters<SubtitleFlowApi['getLatestBatch']>): ReturnType<SubtitleFlowApi['getLatestBatch']> {
+        return this.api.getLatestBatch(...args);
+    }
+
+    listBatches(...args: Parameters<SubtitleFlowApi['listBatches']>): ReturnType<SubtitleFlowApi['listBatches']> {
+        return this.api.listBatches(...args);
+    }
+
+    summarizeTaskResult(...args: Parameters<SubtitleFlowApi['summarizeTaskResult']>): ReturnType<SubtitleFlowApi['summarizeTaskResult']> {
+        return this.api.summarizeTaskResult(...args);
     }
 
     cleanStaleTasks(...args: Parameters<SubtitleFlowApi['cleanStaleTasks']>): ReturnType<SubtitleFlowApi['cleanStaleTasks']> {

@@ -57,7 +57,7 @@ export function createTaskAgentHandler(api: SubtitleFlowApi): vscode.ChatRequest
             const input = step.buildInput ? step.buildInput(plannerState as any) : (step.input ?? {});
             const content = await runtime.invokeTool(step.toolName, input, step.summary);
             const payload = tryParseToolPayload(content);
-            if (step.storeResultAs && payload) {
+            if (step.storeResultAs) {
                 plannerState[step.storeResultAs] = payload;
             }
             const extractedTaskId = extractTaskId(payload);
@@ -69,11 +69,17 @@ export function createTaskAgentHandler(api: SubtitleFlowApi): vscode.ChatRequest
             }
         }
 
-        if (workflow.listTasksAfterExecution) {
+        const shouldListTasks = typeof workflow.listTasksAfterExecution === 'function'
+            ? workflow.listTasksAfterExecution(plannerState as any)
+            : workflow.listTasksAfterExecution;
+        if (shouldListTasks) {
             await runtime.invokeTool('subtitleflow_list_tasks', {}, '正在刷新字幕任务列表');
         }
-        if (workflow.finalMessage) {
-            stream.markdown(workflow.finalMessage);
+        const finalMessage = typeof workflow.finalMessage === 'function'
+            ? workflow.finalMessage(plannerState as any)
+            : workflow.finalMessage;
+        if (finalMessage) {
+            stream.markdown(finalMessage);
         }
 
         return { metadata: { taskCount: api.listTasks().length } };

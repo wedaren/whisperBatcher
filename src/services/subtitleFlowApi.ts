@@ -1,5 +1,6 @@
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import * as fsSync from 'fs';
 import * as vscode from 'vscode';
 import { OUTPUT_FOLDER_SUFFIX, VIDEO_EXTENSIONS } from '../constants';
 import type { TaskRecord } from '../types';
@@ -12,6 +13,7 @@ import { ComplianceService } from './complianceService';
 import { TaskScheduler } from './taskScheduler';
 import { Logger } from './logger';
 import {
+    type BatchSummary,
     type EnqueueTaskInput,
     type EnqueueTaskOptions,
     type OptimizeOptions,
@@ -21,6 +23,7 @@ import {
     type ScanDirectoryOptions,
     type ScanDirectoryResult,
     type SubtitleFlowApi,
+    type TaskResultSummary,
     type TaskSummary,
     type TranscribeOptions,
     type TranscribeResult,
@@ -54,9 +57,12 @@ export class SubtitleFlowApiService implements SubtitleFlowApi {
     }
 
     async enqueueTasks(inputs: EnqueueTaskInput[], options?: EnqueueTaskOptions): Promise<TaskSummary[]> {
+        const batchId = this.taskStore.generateBatchId();
         const tasks: TaskSummary[] = [];
         for (const input of inputs) {
-            tasks.push(await this.enqueueTask(input, options));
+            const task = await this.createTask(input.videoPath, options, 'queued', batchId);
+            this.scheduler.enqueue(task.id);
+            tasks.push(toTaskSummary(task));
         }
         return tasks;
     }
@@ -65,6 +71,26 @@ export class SubtitleFlowApiService implements SubtitleFlowApi {
         const maxFiles = Math.max(1, options?.maxFiles ?? 100);
         const videos: string[] = [];
         const recursive = options?.recursive ?? false;
+        const warnings: string[] = [];
+
+        try {
+            const stat = await fs.stat(directoryPath);
+            if (!stat.isDirectory()) {
+                return {
+                    directoryPath,
+                    videos: [],
+                    truncated: false,
+                    warnings: [`目标路径不是目录：${directoryPath}`],
+                };
+            }
+        } catch {
+            return {
+                directoryPath,
+                videos: [],
+                truncated: false,
+                warnings: [`目录不存在或无法访问：${directoryPath}`],
+            };
+        }
 
         const walk = async (currentPath: string): Promise<void> => {
             const entries = await fs.readdir(currentPath, { withFileTypes: true });
@@ -86,10 +112,31 @@ export class SubtitleFlowApiService implements SubtitleFlowApi {
         };
 
         await walk(directoryPath);
+        let suggestedDirectoryPath: string | undefined;
+        if (videos.length === 0) {
+            const splitsDir = path.join(directoryPath, 'splits');
+            try {
+                const splitEntries = await fs.readdir(splitsDir, { withFileTypes: true });
+                const hasVideo = splitEntries.some((entry) =>
+                    entry.isFile() && VIDEO_EXTENSIONS.includes(path.extname(entry.name).slice(1).toLowerCase())
+                );
+                if (hasVideo) {
+                    suggestedDirectoryPath = splitsDir;
+                    warnings.push(`当前目录没有直接命中的视频文件，可优先尝试子目录：${splitsDir}`);
+                }
+            } catch {
+                // splits 目录不存在时忽略建议。
+            }
+            if (warnings.length === 0) {
+                warnings.push(`目录中未发现可处理的视频文件：${directoryPath}`);
+            }
+        }
         return {
             directoryPath,
             videos,
             truncated: videos.length >= maxFiles,
+            warnings,
+            suggestedDirectoryPath,
         };
     }
 
@@ -103,7 +150,73 @@ export class SubtitleFlowApiService implements SubtitleFlowApi {
     }
 
     listTasks(): TaskSummary[] {
-        return this.taskStore.getAllTasks().map(toTaskSummary);
+        return this.taskStore.getAllTasks()
+            .slice()
+            .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+            .map(toTaskSummary);
+    }
+
+    getBatch(batchId: string): BatchSummary | undefined {
+        const tasks = this.taskStore.getAllTasks().filter((task) => task.batchId === batchId);
+        return tasks.length > 0 ? this.toBatchSummary(batchId, tasks) : undefined;
+    }
+
+    getLatestBatch(): BatchSummary | undefined {
+        return this.listBatches()[0];
+    }
+
+    listBatches(): BatchSummary[] {
+        const groups = new Map<string, TaskRecord[]>();
+        for (const task of this.taskStore.getAllTasks()) {
+            if (!task.batchId) {
+                continue;
+            }
+            const bucket = groups.get(task.batchId) ?? [];
+            bucket.push(task);
+            groups.set(task.batchId, bucket);
+        }
+
+        return Array.from(groups.entries())
+            .map(([batchId, tasks]) => this.toBatchSummary(batchId, tasks))
+            .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+    }
+
+    summarizeTaskResult(taskId: string): TaskResultSummary | undefined {
+        const task = this.taskStore.getTask(taskId);
+        if (!task) {
+            return undefined;
+        }
+
+        const outputFolder = task.outputs.folder;
+        const manualReviewPath = outputFolder ? path.join(outputFolder, 'manual-review.json') : undefined;
+        const lexiconCandidatesPath = outputFolder ? path.join(outputFolder, 'lexicon-candidates.json') : undefined;
+        const recoverySummaryPath = outputFolder ? path.join(outputFolder, 'recovery-summary.md') : undefined;
+
+        const review = {
+            hasManualReview: manualReviewPath ? this.fileExists(manualReviewPath) : false,
+            manualReviewPath,
+            hasLexiconCandidates: lexiconCandidatesPath ? this.fileExists(lexiconCandidatesPath) : false,
+            lexiconCandidatesPath,
+            hasRecoverySummary: recoverySummaryPath ? this.fileExists(recoverySummaryPath) : false,
+            recoverySummaryPath,
+        };
+
+        return {
+            taskId: task.id,
+            batchId: task.batchId,
+            status: task.status,
+            currentPhase: task.currentPhase,
+            videoPath: task.videoPath,
+            outputFolder,
+            defaultSubtitlePath: task.outputs.finalSrt,
+            optimizedSubtitlePath: task.outputs.llm,
+            rawSubtitlePath: task.outputs.raw,
+            translatedPaths: { ...task.outputs.translated },
+            logPath: task.outputs.log,
+            configPath: task.outputs.config,
+            review,
+            message: this.buildTaskResultMessage(task, review),
+        };
     }
 
     cleanStaleTasks(): number {
@@ -177,9 +290,10 @@ export class SubtitleFlowApiService implements SubtitleFlowApi {
     private async createTask(
         videoPath: string,
         options: EnqueueTaskOptions | undefined,
-        mode: 'queued' | 'direct'
+        mode: 'queued' | 'direct',
+        batchId?: string
     ): Promise<TaskRecord> {
-        const task = this.taskStore.addTask(videoPath, options);
+        const task = this.taskStore.addTask(videoPath, options, { batchId });
         const taskOutputDir = this.resolveTaskOutputDir(videoPath);
 
         try {
@@ -208,6 +322,70 @@ export class SubtitleFlowApiService implements SubtitleFlowApi {
         }
 
         return updated ?? task;
+    }
+
+    private toBatchSummary(batchId: string, tasks: TaskRecord[]): BatchSummary {
+        const createdAt = tasks
+            .map((task) => task.createdAt)
+            .slice()
+            .sort((left, right) => left.localeCompare(right))[0];
+        const updatedAt = tasks
+            .map((task) => task.updatedAt)
+            .slice()
+            .sort((left, right) => right.localeCompare(left))[0];
+        const runningCount = tasks.filter((task) => ['transcribing', 'optimizing', 'translating'].includes(task.status)).length;
+
+        return {
+            id: batchId,
+            createdAt,
+            updatedAt,
+            taskIds: tasks.map((task) => task.id),
+            videoPaths: tasks.map((task) => task.videoPath),
+            counts: {
+                total: tasks.length,
+                queued: tasks.filter((task) => task.status === 'queued').length,
+                running: runningCount,
+                completed: tasks.filter((task) => task.status === 'completed').length,
+                failed: tasks.filter((task) => task.status === 'failed').length,
+                paused: tasks.filter((task) => task.status === 'paused').length,
+            },
+        };
+    }
+
+    private buildTaskResultMessage(
+        task: TaskRecord,
+        review: {
+            hasManualReview: boolean;
+            hasLexiconCandidates: boolean;
+            hasRecoverySummary: boolean;
+        }
+    ): string {
+        if (task.status !== 'completed') {
+            return `任务尚未完成，当前阶段为 ${task.currentPhase}。`;
+        }
+
+        const translatedCount = Object.keys(task.outputs.translated).length;
+        const reviewHints: string[] = [];
+        if (review.hasManualReview) {
+            reviewHints.push('存在人工复核记录');
+        }
+        if (review.hasLexiconCandidates) {
+            reviewHints.push('存在词典候选');
+        }
+
+        return [
+            task.outputs.finalSrt ? '默认字幕已生成。' : '默认字幕尚未生成。',
+            translatedCount > 0 ? `翻译字幕 ${translatedCount} 份。` : '当前没有翻译字幕输出。',
+            reviewHints.length > 0 ? `附加信息：${reviewHints.join('，')}。` : '当前没有额外复核工件。',
+        ].join(' ');
+    }
+
+    private fileExists(filePath: string): boolean {
+        try {
+            return fsSync.existsSync(filePath);
+        } catch {
+            return false;
+        }
     }
 
     private resolveTaskOutputDir(videoPath: string): string {

@@ -14,13 +14,59 @@ export type TaskStatus = TaskPhase;
 export interface TaskSummary {
     id: string;
     videoPath: string;
+    createdAt: string;
     status: TaskStatus;
     currentPhase: string;
     updatedAt: string;
+    batchId?: string;
     outputs: TaskOutputs;
     config?: TaskConfig;
     lastError?: string;
     complianceHits?: number;
+}
+
+export interface BatchTaskCounts {
+    total: number;
+    queued: number;
+    running: number;
+    completed: number;
+    failed: number;
+    paused: number;
+}
+
+export interface BatchSummary {
+    id: string;
+    createdAt: string;
+    updatedAt: string;
+    taskIds: string[];
+    videoPaths: string[];
+    counts: BatchTaskCounts;
+}
+
+export interface ReviewSummary {
+    hasManualReview: boolean;
+    manualReviewPath?: string;
+    hasLexiconCandidates: boolean;
+    lexiconCandidatesPath?: string;
+    hasRecoverySummary: boolean;
+    recoverySummaryPath?: string;
+}
+
+export interface TaskResultSummary {
+    taskId: string;
+    batchId?: string;
+    status: TaskStatus;
+    currentPhase: string;
+    videoPath: string;
+    outputFolder?: string;
+    defaultSubtitlePath?: string;
+    optimizedSubtitlePath?: string;
+    rawSubtitlePath?: string;
+    translatedPaths: Record<string, string>;
+    logPath?: string;
+    configPath?: string;
+    review: ReviewSummary;
+    message: string;
 }
 
 export interface EnqueueTaskInput {
@@ -87,6 +133,8 @@ export interface ScanDirectoryResult {
     directoryPath: string;
     videos: string[];
     truncated: boolean;
+    warnings: string[];
+    suggestedDirectoryPath?: string;
 }
 
 /**
@@ -142,6 +190,10 @@ export interface SubtitleFlowApi {
     runPending(): void;
     getTask(taskId: string): TaskSummary | undefined;
     listTasks(): TaskSummary[];
+    getBatch(batchId: string): BatchSummary | undefined;
+    getLatestBatch(): BatchSummary | undefined;
+    listBatches(): BatchSummary[];
+    summarizeTaskResult(taskId: string): TaskResultSummary | undefined;
     cleanStaleTasks(): number;
     pauseTask(taskId: string): void;
     resumeTask(taskId: string): void;
@@ -180,9 +232,11 @@ export function toTaskSummary(task: TaskRecord): TaskSummary {
     return {
         id: task.id,
         videoPath: task.videoPath,
+        createdAt: task.createdAt,
         status: task.status,
         currentPhase: task.currentPhase,
         updatedAt: task.updatedAt,
+        batchId: task.batchId,
         outputs: {
             ...task.outputs,
             translated: { ...task.outputs.translated },

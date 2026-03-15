@@ -13,9 +13,11 @@ export const TASK_AGENT_PARTICIPANT_ID = 'wedaren.whisper-subtitle-flow.agent';
 export const TASK_AGENT_CHAT_COMMANDS: TaskAgentChatCommand[] = [
     { name: 'help', description: 'Show subtitle agent usage' },
     { name: 'list', description: 'List subtitle tasks' },
+    { name: 'batches', description: 'List recent subtitle batches' },
     { name: 'enqueue', description: 'Create a queued subtitle task from a video path' },
     { name: 'run', description: 'Start the pending queue or create and start a task' },
     { name: 'get', description: 'Inspect one subtitle task' },
+    { name: 'result', description: 'Summarize one subtitle task result' },
     { name: 'pause', description: 'Pause a running subtitle task' },
     { name: 'resume', description: 'Resume a paused subtitle task' },
     { name: 'retry', description: 'Retry a failed subtitle task' },
@@ -27,6 +29,7 @@ export const TASK_AGENT_CHAT_COMMANDS: TaskAgentChatCommand[] = [
  */
 export const TASK_AGENT_FOLLOWUPS: TaskAgentFollowup[] = [
     { prompt: '/list', label: '列出任务' },
+    { prompt: '/batches', label: '最近批次' },
     { prompt: '/run', label: '启动队列' },
     { prompt: '/enqueue "/absolute/path/video.mp4"', label: '创建任务' },
 ];

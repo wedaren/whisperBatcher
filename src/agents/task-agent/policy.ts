@@ -18,9 +18,16 @@ export function parseTaskAgentIntent(command: string | undefined, prompt: string
     if (head === 'list') {
         return { type: 'list' };
     }
+    if (head === 'batches' || head === 'batch') {
+        return { type: 'listBatches' };
+    }
     if (head === 'get') {
         const taskId = extractTaskId(normalized);
         return taskId ? { type: 'get', taskId } : { type: 'help' };
+    }
+    if (head === 'result') {
+        const taskId = extractTaskId(normalized);
+        return taskId ? { type: 'result', taskId } : { type: 'help' };
     }
     if (head === 'pause') {
         const taskId = extractTaskId(normalized);
@@ -60,6 +67,9 @@ export function parseTaskAgentIntent(command: string | undefined, prompt: string
     if (/run pending|start pending|继续执行|运行队列/i.test(normalized)) {
         return { type: 'runPending' };
     }
+    if (/最近批次|这批|batch/i.test(normalized)) {
+        return { type: 'latestBatch' };
+    }
     if (/list|tasks?|队列|状态/i.test(normalized)) {
         return { type: 'list' };
     }
@@ -96,6 +106,15 @@ export function inferTaskAgentIntent(
                 return { type: 'enqueue', videoPath: match, autoStart: false };
             }
             return { type: 'enqueue', videoPath: match, autoStart: true };
+        }
+    }
+    if (/最近批次|这批|batch/i.test(normalized)) {
+        return { type: 'latestBatch' };
+    }
+    if (/结果|输出|字幕文件|review/i.test(normalized)) {
+        const completed = latestTask(tasks, (task) => task.status === 'completed') ?? latestTask(tasks);
+        if (completed) {
+            return { type: 'result', taskId: completed.id };
         }
     }
     if (/重试|retry/i.test(normalized)) {
@@ -145,8 +164,16 @@ export function buildTaskAgentWorkflow(intent: TaskAgentIntent, tasks: TaskSumma
     switch (intent.type) {
         case 'list':
             return { steps: [{ toolName: TASK_AGENT_TOOLS.listTasks, input: {}, summary: '正在列出字幕任务' }] };
+        case 'listBatches':
+            return { steps: [{ toolName: TASK_AGENT_TOOLS.listBatches, input: {}, summary: '正在列出最近字幕批次' }] };
+        case 'latestBatch':
+            return { steps: [{ toolName: TASK_AGENT_TOOLS.getLatestBatch, input: {}, summary: '正在读取最近批次状态' }] };
         case 'get':
             return { steps: [{ toolName: TASK_AGENT_TOOLS.getTask, input: { taskId: intent.taskId }, summary: `正在读取任务 ${intent.taskId}` }] };
+        case 'result':
+            return {
+                steps: [{ toolName: TASK_AGENT_TOOLS.summarizeTaskResult, input: { taskId: intent.taskId }, summary: `正在汇总任务 ${intent.taskId} 的输出结果` }],
+            };
         case 'pause':
             return {
                 steps: [{ toolName: TASK_AGENT_TOOLS.pauseTask, input: { taskId: intent.taskId }, summary: `正在暂停任务 ${intent.taskId}` }],
@@ -203,13 +230,33 @@ export function buildTaskAgentWorkflow(intent: TaskAgentIntent, tasks: TaskSumma
                             inputs: (state.scanDirectory?.videos ?? []).map((videoPath) => ({ videoPath })),
                         }),
                         summary: '正在为目录中的视频批量创建后台任务',
+                        storeResultAs: 'enqueueTasks',
                     },
                     ...(intent.autoStart ? [{ toolName: TASK_AGENT_TOOLS.runPending, input: {}, summary: '正在尝试启动后台队列' }] : []),
                 ],
-                listTasksAfterExecution: true,
-                finalMessage: intent.autoStart
-                    ? '目录中的视频已批量入队，并已尝试启动后台队列。Whisper 长任务请稍后用 `/list` 查看整体状态。'
-                    : '目录中的视频已批量入队。当前不会阻塞等待 Whisper 完成，需要时可再执行 `/run` 启动队列。',
+                listTasksAfterExecution: (state) => Boolean(state.enqueueTasks && state.enqueueTasks.length > 0),
+                finalMessage: (state) => {
+                    const warnings = state.scanDirectory?.warnings ?? [];
+                    const candidateDirectoryPath = state.scanDirectory?.directoryPath;
+                    const suggestedDirectoryPath = state.scanDirectory?.suggestedDirectoryPath;
+                    const queuedTasks = state.enqueueTasks ?? [];
+                    if (queuedTasks.length === 0) {
+                        const candidateMessage = candidateDirectoryPath
+                            ? `我识别到的目录候选是：\`${candidateDirectoryPath}\`。`
+                            : '当前没有稳定识别出可用目录。';
+                        const extra = suggestedDirectoryPath
+                            ? `建议改扫：\`${suggestedDirectoryPath}\`。`
+                            : '请确认目录路径是否正确；如果路径里包含空格或自然语言尾巴，建议直接给目录加引号后重试。';
+                        return `当前没有创建任何任务。${candidateMessage} ${warnings.join('；') || '目录扫描结果为空。'} ${extra}`;
+                    }
+
+                    const batchId = queuedTasks[0]?.batchId;
+                    const taskCount = queuedTasks.length;
+                    const truncatedNotice = state.scanDirectory?.truncated ? ' 目录扫描已达到上限，结果可能被截断。' : '';
+                    return intent.autoStart
+                        ? `目录中的 ${taskCount} 个视频已批量入队${batchId ? `，批次 ID：\`${batchId}\`` : ''}，并已尝试启动后台队列。Whisper 长任务请稍后用 \`/batches\` 或 \`/list\` 查看整体状态。${truncatedNotice}`
+                        : `目录中的 ${taskCount} 个视频已批量入队${batchId ? `，批次 ID：\`${batchId}\`` : ''}。当前不会阻塞等待 Whisper 完成，需要时可再执行 \`/run\` 启动队列。${truncatedNotice}`;
+                },
             };
         case 'runPending': {
             const focusTask = latestTask(tasks, (task) =>

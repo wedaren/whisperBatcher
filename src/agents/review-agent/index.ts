@@ -60,13 +60,17 @@ export class ReviewAgent {
             timestamp,
         };
 
-        this.appendJsonArray(path.join(outDir, 'manual-review.json'), reviewRecord);
+        const reviewFile = path.join(outDir, 'manual-review.json');
+        this.appendJsonArray(reviewFile, reviewRecord);
 
         if (input.failure === 'refusal') {
+            const candidateFile = path.join(outDir, 'lexicon-candidates.json');
             for (const candidate of this.extractCandidates(input)) {
-                this.appendJsonArray(path.join(outDir, 'lexicon-candidates.json'), candidate);
+                this.appendJsonArray(candidateFile, candidate);
             }
         }
+
+        this.writeRecoverySummary(outDir);
     }
 
     private extractCandidates(input: Pick<ReviewFailureInput, 'stage' | 'chunkIndex' | 'sanitizedTexts' | 'reason' | 'targetLang'>): LexiconCandidate[] {
@@ -125,5 +129,60 @@ export class ReviewAgent {
 
         items.push(record);
         fs.writeFileSync(filePath, JSON.stringify(items, null, 2), 'utf-8');
+    }
+
+    private writeRecoverySummary(outDir: string): void {
+        const reviewPath = path.join(outDir, 'manual-review.json');
+        const candidatePath = path.join(outDir, 'lexicon-candidates.json');
+        const summaryPath = path.join(outDir, 'recovery-summary.md');
+
+        const reviews = this.readJsonArray<ReviewRecord>(reviewPath);
+        const candidates = this.readJsonArray<LexiconCandidate>(candidatePath);
+
+        const lines: string[] = [
+            '# Recovery Summary',
+            '',
+            `- 失败块总数：${reviews.length}`,
+            `- 词典候选总数：${candidates.length}`,
+        ];
+
+        if (reviews.length > 0) {
+            const grouped = new Map<string, number>();
+            for (const review of reviews) {
+                const key = `${review.stage}:${review.failure}`;
+                grouped.set(key, (grouped.get(key) ?? 0) + 1);
+            }
+            lines.push('', '## Failure Buckets', '');
+            for (const [key, count] of grouped.entries()) {
+                lines.push(`- ${key}: ${count}`);
+            }
+
+            lines.push('', '## Review Items', '');
+            for (const review of reviews.slice(-20)) {
+                lines.push(`- chunk ${review.chunkIndex} [${review.stage}] ${review.failure}: ${review.reason}`);
+            }
+        }
+
+        if (candidates.length > 0) {
+            lines.push('', '## Lexicon Candidates', '');
+            for (const candidate of candidates.slice(-20)) {
+                lines.push(`- ${candidate.candidate} (${candidate.stage}${candidate.targetLang ? `/${candidate.targetLang}` : ''})`);
+            }
+        }
+
+        fs.writeFileSync(summaryPath, `${lines.join('\n')}\n`, 'utf-8');
+    }
+
+    private readJsonArray<T>(filePath: string): T[] {
+        if (!fs.existsSync(filePath)) {
+            return [];
+        }
+
+        try {
+            const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+            return Array.isArray(parsed) ? parsed as T[] : [];
+        } catch {
+            return [];
+        }
     }
 }
