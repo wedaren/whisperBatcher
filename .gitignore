@@ -1,10 +1,6 @@
 out
 dist
 node_modules
-!test/runtime/
-!test/runtime/node_modules/
-!test/runtime/node_modules/vscode/
-!test/runtime/node_modules/vscode/index.js
 .vscode-test/
 *.vsix
 out-test

@@ -666,7 +666,7 @@
     "check-types": "tsc --noEmit",
     "lint": "eslint src",
     "test": "npm run test:unit",
-    "test:unit": "NODE_PATH=./test/runtime/node_modules node --test out-test/test/**/*.test.js"
+    "test:unit": "NODE_PATH=./test/runtime node --test out-test/test/**/*.test.js"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",

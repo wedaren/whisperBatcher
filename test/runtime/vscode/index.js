@@ -126,61 +126,48 @@ const window = {
         warningMessages.push(message);
         return undefined;
     },
-    async showQuickPick() {
-        return undefined;
+    createTreeView(id, options) {
+        const treeView = { id, options, dispose() {} };
+        treeViews.push(treeView);
+        return treeView;
     },
-    async showInputBox() {
-        return undefined;
-    },
-    createOutputChannel(name) {
+    createOutputChannel() {
         return {
-            name,
-            lines: [],
-            appendLine(line) {
-                this.lines.push(line);
-            },
+            appendLine() {},
             show() {},
             dispose() {},
         };
-    },
-    createTreeView(id, options) {
-        const view = {
-            id,
-            options,
-            dispose() {},
-        };
-        treeViews.push(view);
-        return view;
     },
 };
 
 const commands = {
     registerCommand(name, handler) {
         registeredCommands.set(name, handler);
-        return new Disposable(() => registeredCommands.delete(name));
+        return new Disposable(() => {
+            registeredCommands.delete(name);
+        });
     },
     async executeCommand(name, ...args) {
         executedCommands.push({ name, args });
         const handler = registeredCommands.get(name);
-        if (handler) {
-            return handler(...args);
-        }
-        return undefined;
+        return handler ? handler(...args) : undefined;
     },
 };
 
 const lm = {
     registerTool(name, tool) {
         registeredTools.set(name, tool);
-        return new Disposable(() => registeredTools.delete(name));
+        return new Disposable(() => {
+            registeredTools.delete(name);
+        });
     },
-    async invokeTool(name, options, token) {
-        toolInvocations.push({ name, options, token });
+    async invokeTool(name, options) {
+        toolInvocations.push({ name, options });
         const tool = registeredTools.get(name);
         if (!tool) {
-            throw new Error(`Tool not found: ${name}`);
+            throw new Error(`Unknown tool: ${name}`);
         }
-        return tool.invoke(options, token);
+        return tool.invoke(options, CancellationToken.None);
     },
 };
 
@@ -188,9 +175,9 @@ const chat = {
     createChatParticipant(id, handler) {
         const participant = {
             id,
-            handler,
             iconPath: undefined,
             followupProvider: undefined,
+            requestHandler: handler,
             dispose() {},
         };
         createdParticipants.push(participant);
